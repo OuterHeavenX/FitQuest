@@ -1,5 +1,6 @@
 import './history.css';
 import './account.js';
+import './bossBattle.js';
 import { readCloudSave, writeSave } from './lib/storage.js';
 
 const esc = value => String(value ?? '').replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
