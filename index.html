@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes, viewport-fit=cover" />
+  <meta name="theme-color" content="#0b1020" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <title>FitQuest — Your Fitness RPG</title>
+</head>
+<body>
+  <div class="ambient orb-one"></div><div class="ambient orb-two"></div>
+  <div class="app-shell">
+    <header class="topbar">
+      <div><p class="eyebrow">FITNESS RPG · CAMPAIGN I</p><h1>FitQuest <span class="beta">v0.5 · Vite</span></h1></div>
+      <div class="header-actions"><div class="ops-status" id="opsStatus"><span class="alert-mark">!</span><span>TACTICAL FITNESS ACTION</span></div><button class="new-workout" id="newWorkoutBtn">⚔️ New Adventure</button><button class="level-chip" id="levelChip" aria-label="Level badge"><span>LVL</span><strong id="levelValue">1</strong></button></div>
+    </header>
+
+    <main>
+      <section class="hero card legendary-border">
+        <div><p class="chapter">CHAPTER I · THE BEGINNING</p><h2 id="heroTitle">Day 1: The Journey Begins</h2><p class="muted" id="heroDate">Friday, July 31, 2026 · Evening</p></div>
+        <div class="xp-wrap"><div class="xp-label"><span>Experience</span><strong id="xpText">180 / 500 XP</strong></div><div class="progress"><span id="xpBar"></span></div><small class="xp-whisper">Every rep writes the story.</small></div>
+      </section>
+
+      <section class="stats-grid">
+        <article class="stat card"><span>🔥</span><div><small>Streak</small><strong id="streakStat">1 day</strong></div></article>
+        <article class="stat card"><span>⚔️</span><div><small>Strength Sets</small><strong id="setsStat">15</strong></div></article>
+        <article class="stat card"><span>🏃</span><div><small>Cardio</small><strong id="cardioStat">20 min</strong></div></article>
+        <article class="stat card"><span>✨</span><div><small>Total XP</small><strong id="totalXpStat">180</strong></div></article>
+      </section>
+
+      <section class="two-col">
+        <article class="card quest-card">
+          <div class="section-heading"><div><p class="eyebrow">CURRENT ADVENTURE</p><h3>Workout Log</h3></div><button class="ghost" id="addExerciseBtn">＋ Exercise</button></div>
+          <div id="workoutList" class="workout-list"></div>
+        </article>
+        <article class="card character-card">
+          <div class="section-heading"><div><p class="eyebrow">CHARACTER DOSSIER · PERMANENT STATS</p></div><button class="ghost mini" id="editIdentityBtn">✎ Edit Identity</button></div>
+          <div class="avatar"><span>⚔️</span></div><h3 id="rankTitle">Novice Adventurer</h3><p class="muted" id="characterGoal">Goal: Slim & Tone</p>
+          <div class="identity-readout"><div><small>Date of Birth</small><strong id="dobReadout">Not set</strong></div><div><small>Age</small><strong id="ageReadout">—</strong></div><div><small>Height</small><strong id="heightReadout">Not set</strong></div></div>
+          <div id="identityEditor" class="identity-editor" hidden>
+            <label>Date of Birth<input id="profileDob" type="date"></label>
+            <label>Height <span class="muted">(set once; examples: 5'10&quot;, 70 in, 178 cm)</span><input id="profileHeightText" inputmode="text" placeholder="e.g. 5'10"" autocomplete="off"></label>
+            <button class="primary compact" id="saveIdentityBtn" type="button">Lock In Identity Stats</button>
+          </div>
+          <small class="profile-completion" id="profileCompletion"></small>
+        </article>
+      </section>
+
+      <section class="card daily-checkin">
+        <div class="section-heading"><div><p class="eyebrow">DAILY STATUS · RECOVERY INTEL</p><h3>Daily Check-In</h3></div><span class="pill" id="checkInDateLabel">Today</span></div>
+        <div class="checkin-grid">
+          <label>Weight<div class="input-unit"><input id="dailyWeight" type="number" min="1" step="0.1" placeholder="—"><select id="dailyWeightUnit"><option value="lb">lb</option><option value="kg">kg</option></select></div></label>
+          <label>Sleep last night
+      <div class="sleep-inputs">
+        <div class="sleep-field"><input id="dailySleepHours" type="number" inputmode="numeric" min="0" max="24" step="1" placeholder="0"><span>Hrs</span></div>
+        <div class="sleep-field"><input id="dailySleepMinutes" type="number" inputmode="numeric" min="0" max="59" step="1" placeholder="0"><span>Min</span></div>
+      </div>
+    </label>
+          <div class="hydration-field"><label>Water today <span class="muted">(fl oz)</span><input id="dailyWater" type="number" min="0" step="1" placeholder="0"></label><div class="water-chips"><button type="button" data-water-add="8">+8 oz</button><button type="button" data-water-add="16">+16 oz</button><button type="button" data-water-add="24">+24 oz</button></div></div>
+        </div>
+        <button class="primary compact" id="saveCheckInBtn" type="button">Save Daily Check-In</button>
+        <div class="checkin-summary" id="checkInSummary"></div>
+      </section>
+
+      <section class="card codex" id="exerciseCodexSection">
+        <div class="section-heading"><div><p class="eyebrow">EXERCISE CODEX · LEARNS AS YOU TRAIN</p><h3>Quick Add Moves</h3></div><span class="pill">Tap to log</span></div>
+        <p class="muted codex-help">Every new exercise you type is remembered here automatically. Tomorrow's mystery machine becomes next week's one-tap favorite.</p>
+        <div id="exerciseLibrary" class="codex-grid"></div>
+      </section>
+
+      <section class="two-col lower nutrition-layout">
+        <article class="card nutrition-card">
+          <div class="section-heading"><div><p class="eyebrow">PROVISIONS</p><h3>Nutrition Log</h3></div><button class="ghost" id="addFoodBtn">＋ Food</button></div>
+          <div class="macro-grid"><div><span>🔥</span><strong id="calorieTotal">0</strong><small>Calories</small></div><div><span>🥩</span><strong id="proteinTotal">0g</strong><small>Protein</small></div><div><span>🍚</span><strong id="carbTotal">0g</strong><small>Carbs</small></div><div><span>🥑</span><strong id="fatTotal">0g</strong><small>Fat</small></div></div>
+          <div class="quick-foods" id="quickFoods"></div><div id="foodLog" class="food-log"></div>
+          <p class="tiny-note">Built-in foods are convenient estimates. Online results come from Open Food Facts and can vary by brand/serving; verify packaged-food labels when accuracy matters.</p>
+        </article>
+        <article class="card quest-board"><div class="section-heading"><div><p class="eyebrow">DAILY QUESTS</p><h3>Quest Board</h3></div><span class="quest-count" id="questCount">0/3</span></div><div id="questList"></div><div class="quest-flare">✨ Complete quests. Build momentum. Unlock your next self.</div></article>
+      </section>
+
+      <section class="two-col lower">
+        <article class="card"><div class="section-heading"><div><p class="eyebrow">WEEKLY PROGRESS</p><h3>Adventure Map</h3></div><span class="pill">Week 1</span></div><div class="week-grid" id="weekGrid"></div><div class="weekly-summary" id="weeklySummary"></div></article>
+        <article class="card achievement-panel"><div class="section-heading"><div><p class="eyebrow">ACHIEVEMENT ARCHIVE</p><h3>Medal Vault</h3></div><span class="pill" id="achievementCount">0 / 0</span></div><p class="muted archive-note">A huge achievement engine runs quietly behind the campaign. Only useful unlocks and nearby goals surface here.</p><div id="achievementPreview"></div></article>
+      </section>
+
+      <section class="card atlas-card">
+        <div class="section-heading"><div><p class="eyebrow">CARDIO ACHIEVEMENT ATLAS</p><h3>How Far Have You Traveled?</h3></div><span class="pill" id="distanceTotal">0.00 mi</span></div>
+        <div class="atlas-progress"><div><strong id="nextLandmarkName">Brooklyn Bridge Crossing</strong><small id="nextLandmarkProgress">1.10 mi remaining</small></div><div class="mini-progress"><i id="landmarkBar"></i></div></div>
+        <div class="landmark-grid" id="landmarkGrid"></div>
+      </section>
+
+      <section class="card mission-dossier">
+        <div class="section-heading"><div><p class="eyebrow">MISSION DOSSIER</p><h3>Campaign Systems</h3></div><span class="pill">CLASSIFIED-ish</span></div>
+        <div class="dossier-grid">
+          <div><span>📦</span><strong>Hidden Protocols</strong><small>Some rewards refuse to explain how they unlock.</small></div>
+          <div><span>❗</span><strong>Alert Status</strong><small>Level-ups, streaks, and rare milestones can trigger tactical notices.</small></div>
+          <div><span>📡</span><strong>Field Intel</strong><small>The app learns your exercise library as your campaign expands.</small></div>
+        </div>
+        <button class="classified-btn" id="classifiedBtn">◼ ACCESS FIELD CODEX</button>
+        <div class="classified-message" id="classifiedMessage" hidden>“The body keeps the mission log.” — encrypted field note</div>
+      </section>
+
+      <section class="card chronicle"><div class="section-heading"><div><p class="eyebrow">TRAINING CHRONICLE</p><h3>Your Story So Far</h3></div><span class="pill">Campaign I</span></div><div id="chronicle"></div></section>
+    </main>
+  </div>
+
+  <dialog id="exerciseDialog"><form method="dialog" id="exerciseForm"><div class="dialog-head"><div><p class="eyebrow">COMBAT LOG</p><h3 id="exerciseDialogTitle">Add Exercise</h3></div><button type="button" class="icon-btn dialog-close" data-close-parent aria-label="Close dialog">×</button></div><input type="hidden" id="exerciseEditIndex"><label>Exercise name<input id="exerciseName" required placeholder="e.g. Leg Press" /></label><div class="form-row"><label>Type<select id="exerciseType"><option value="strength">Strength</option><option value="cardio">Cardio</option></select></label><label>Icon<input id="exerciseIcon" maxlength="4" value="⚔️" /></label></div><div id="strengthFields"><div class="form-row"><label>Sets<input id="exerciseSets" type="number" min="1" value="3" /></label><label>Reps<input id="exerciseReps" type="number" min="1" value="10" /></label></div><label>Weight <span class="muted">(optional)</span><input id="exerciseWeight" placeholder="e.g. 40 lb" /></label></div><div id="cardioFields" hidden><div class="form-row"><label>Minutes<input id="exerciseDuration" type="number" min="1" value="20" /></label><label>Distance <span class="muted">(optional)</span><div class="input-unit"><input id="exerciseDistance" type="number" min="0" step="0.01" placeholder="e.g. 1.25" /><select id="exerciseDistanceUnit"><option value="mi">mi</option><option value="km">km</option></select></div></label></div></div><button class="primary" value="default">Log the Move</button><p class="dialog-tip">✨ New exercise names are automatically added to your Exercise Codex.</p></form></dialog>
+
+  <dialog id="foodDialog"><form id="foodForm"><div class="dialog-head"><div><p class="eyebrow">PROVISIONS</p><h3>Log Food</h3></div><button type="button" class="icon-btn dialog-close" data-close-dialog="foodDialog" aria-label="Close food dialog">×</button></div>
+    <div class="food-search-strip"><label>Food<input id="foodName" list="foodSuggestions" required placeholder="e.g. Chicken Breast"></label><button type="button" class="ghost lookup-btn" id="foodLookupBtn">🔎 Search Online</button></div>
+    <datalist id="foodSuggestions"></datalist>
+    <div id="onlineFoodResults" class="online-results" hidden></div>
+    <div class="form-row"><label>Icon<input id="foodIcon" maxlength="4" value="🍽️"></label><label>Serving<input id="foodServing" placeholder="e.g. 1 cup"></label></div>
+    <div class="macro-inputs"><label>Calories<input id="foodCalories" type="number" min="0"></label><label>Protein (g)<input id="foodProtein" type="number" min="0" step="0.1"></label><label>Carbs (g)<input id="foodCarbs" type="number" min="0" step="0.1"></label><label>Fat (g)<input id="foodFat" type="number" min="0" step="0.1"></label></div>
+    <label>Hydration <span class="muted">(optional fl oz)</span><input id="foodHydration" type="number" min="0" step="1" placeholder="0"></label>
+    <input id="foodSource" type="hidden"><button class="primary" type="submit">Add Provisions</button><p class="dialog-tip">Use built-in quick foods, enter label values, or tap Search Online for a richer product database.</p></form></dialog>
+
+  <dialog id="newWorkoutDialog"><form method="dialog" id="newWorkoutForm"><div class="dialog-head"><div><p class="eyebrow">NEW CHAPTER ENTRY</p><h3>Start an Adventure</h3></div><button type="button" class="icon-btn dialog-close" data-close-parent aria-label="Close dialog">×</button></div><div class="form-row"><label>Date<input id="newWorkoutDate" type="date" required></label><label>Start time<input id="newWorkoutTime" placeholder="e.g. 7:30 PM"></label></div><label>Adventure title<input id="newWorkoutTitle" placeholder="e.g. Return to the Iron Temple"></label><label>Note<input id="newWorkoutNote" placeholder="How are you feeling today?"></label><button class="primary" value="default">Begin Adventure</button></form></dialog>
+
+  <div class="toast" id="toast"></div>
+  <script type="module" src="/src/app.js"></script>
+</body>
+</html>
