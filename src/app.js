@@ -5,7 +5,7 @@ import { calculateStats, nextExerciseXP, nutritionXP } from './lib/progression.j
 import { quickFoods, findQuickFood, searchOpenFoodFacts } from './lib/nutrition.js';
 import { achievementSummary, sketchSVG } from './lib/achievements.js';
 
-let state = loadSave(seedData);
+let state = await loadSave(seedData);
 let titleTapCount = 0;
 const $ = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
