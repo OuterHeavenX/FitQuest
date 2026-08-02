@@ -23,6 +23,6 @@ export default {
       }
     }
 
-    return new Response('Not Found', { status: 404 });
+    return env.ASSETS.fetch(request);
   }
 };
