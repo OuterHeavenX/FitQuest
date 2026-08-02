@@ -1,3 +1,5 @@
+import './navigation.js';
+import './dailyActivity.js';
 import { readCloudSave, writeSave } from './lib/storage.js';
 
 const $ = selector => document.querySelector(selector);
@@ -76,47 +78,150 @@ function streakFor(data, upToDate) {
   if (!dates.length) return 0;
 
   let streak = 1;
+
   for (let i = dates.length - 1; i > 0; i--) {
     const a = new Date(`${dates[i]}T12:00:00`);
     const b = new Date(`${dates[i - 1]}T12:00:00`);
     const diff = Math.round((a - b) / 86400000);
+
     if (diff === 1) streak++;
     else break;
   }
+
   return streak;
+}
+
+function activityForDate(data, date) {
+  return (data.checkIns || []).find(item => item.date === date) || null;
 }
 
 function damageFor(workout, streak) {
   const exercises = Array.isArray(workout?.exercises) ? workout.exercises : [];
-  const sets = exercises.filter(e => e.type === 'strength').reduce((n, e) => n + (Number(e.sets) || 0), 0);
-  const cardio = exercises.filter(e => e.type === 'cardio').reduce((n, e) => n + (Number(e.duration) || 0), 0);
+
+  const sets = exercises
+    .filter(e => e.type === 'strength')
+    .reduce((n, e) => n + (Number(e.sets) || 0), 0);
+
+  const cardio = exercises
+    .filter(e => e.type === 'cardio')
+    .reduce((n, e) => n + (Number(e.duration) || 0), 0);
 
   return Math.max(
     55,
     Math.min(
       190,
-      Math.round(30 + exercises.length * 12 + sets * 3 + cardio * 1.5 + Math.min(35, streak * 5))
+      Math.round(
+        30 +
+        exercises.length * 12 +
+        sets * 3 +
+        cardio * 1.5 +
+        Math.min(35, streak * 5)
+      )
     )
   );
+}
+
+function activityDamage(checkIn) {
+  if (!checkIn) return 0;
+
+  const steps = Number(checkIn.steps) || 0;
+  const calories = Number(checkIn.activeCalories) || 0;
+  const minutes = Number(checkIn.exerciseMinutes) || 0;
+  const stand = Number(checkIn.standHours) || 0;
+
+  const raw =
+    Math.floor(steps / 1000) * 2 +
+    Math.floor(calories / 100) * 2 +
+    Math.floor(minutes / 15) * 3 +
+    (stand >= 10 ? 5 : 0);
+
+  return Math.max(0, Math.min(60, raw));
 }
 
 function toast(message) {
   const el = $('#toast');
   if (!el) return;
+
   el.textContent = message;
   el.classList.add('show');
+
   clearTimeout(window.__fitquestBossToast);
-  window.__fitquestBossToast = setTimeout(() => el.classList.remove('show'), 3200);
+
+  window.__fitquestBossToast =
+    setTimeout(() => el.classList.remove('show'), 3200);
+}
+
+function grantVictory(data, boss, sourceRecord, at) {
+  if (boss.rewardGranted) return;
+
+  boss.rewardGranted = true;
+
+  if (sourceRecord?.completionXp != null) {
+    sourceRecord.bossRewardXp = BOSS.rewardXp;
+    sourceRecord.completionXp =
+      (Number(sourceRecord.completionXp) || 0) + BOSS.rewardXp;
+
+    sourceRecord.completionSummary =
+      `${sourceRecord.completionSummary || 'Adventure completed'} · ` +
+      `Boss victory +${BOSS.rewardXp} XP`;
+  } else {
+    data.ui.rpg.bossVictoryXp ||= 0;
+    data.ui.rpg.bossVictoryXp += BOSS.rewardXp;
+  }
+
+  if (!data.ui.rpg.inventory.some(item => item.id === BOSS.loot.id)) {
+    data.ui.rpg.inventory.push({
+      ...BOSS.loot,
+      earnedAt: at,
+      source: BOSS.name
+    });
+  }
+}
+
+function strike(boss, {
+  id,
+  date,
+  damage,
+  at,
+  streak = 0,
+  source = 'workout'
+}) {
+  const before = boss.hp;
+  const after = Math.max(0, before - damage);
+
+  const attack = {
+    id,
+    date,
+    damage,
+    hpBefore: before,
+    hpAfter: after,
+    streak,
+    source,
+    at
+  };
+
+  boss.hp = after;
+  boss.attacks.push(attack);
+  boss.lastAttack = attack;
+
+  return {
+    attack,
+    defeatedNow: after === 0 && !boss.defeated
+  };
 }
 
 function applyPendingAttacks(data) {
   const boss = ensureBoss(data);
+
   let changed = false;
   let lastResult = null;
 
   const workouts = [...(data.workouts || [])]
     .filter(w => w.completed && Array.isArray(w.exercises) && w.exercises.length > 0)
-    .sort((a, b) => String(a.completedAt || a.date || '').localeCompare(String(b.completedAt || b.date || '')));
+    .sort((a, b) =>
+      String(a.completedAt || a.date || '')
+        .localeCompare(String(b.completedAt || b.date || ''))
+    );
 
   for (const workout of workouts) {
     if (boss.defeated) break;
@@ -124,46 +229,84 @@ function applyPendingAttacks(data) {
 
     const streak = streakFor(data, workout.date);
     const damage = damageFor(workout, streak);
-    const before = boss.hp;
-    const after = Math.max(0, before - damage);
     const at = workout.completedAt || new Date().toISOString();
 
-    const attack = {
+    const result = strike(boss, {
       id: `boss-hit-${workout.id || Date.now()}`,
-      workoutId: workout.id || null,
       date: workout.date || null,
       damage,
-      hpBefore: before,
-      hpAfter: after,
+      at,
       streak,
+      source: 'adventure'
+    });
+
+    workout.bossAttackApplied = {
+      bossId: BOSS.id,
+      damage,
       at
     };
 
-    boss.hp = after;
-    boss.attacks.push(attack);
-    boss.lastAttack = attack;
-    workout.bossAttackApplied = { bossId: BOSS.id, damage, at };
     changed = true;
 
-    let defeatedNow = false;
-    if (after === 0 && !boss.defeated) {
-      defeatedNow = true;
+    if (result.defeatedNow) {
+      boss.defeated = true;
+      boss.defeatedAt = at;
+      grantVictory(data, boss, workout, at);
+    }
+
+    lastResult = result;
+  }
+
+  // Apple Watch / Daily Activity adds a separate field strike.
+  const checkIns = [...(data.checkIns || [])]
+    .filter(item =>
+      item.date &&
+      (
+        Number(item.steps) > 0 ||
+        Number(item.activeCalories) > 0 ||
+        Number(item.exerciseMinutes) > 0 ||
+        Number(item.standHours) > 0
+      )
+    )
+    .sort((a, b) => String(a.date).localeCompare(String(b.date)));
+
+  for (const checkIn of checkIns) {
+    if (boss.defeated) break;
+    if (checkIn.bossActivityApplied?.bossId === BOSS.id) continue;
+
+    const damage = activityDamage(checkIn);
+
+    if (damage <= 0) continue;
+
+    const at = checkIn.activityUpdatedAt || new Date().toISOString();
+
+    const result = strike(boss, {
+      id: `boss-activity-${checkIn.id || checkIn.date}`,
+      date: checkIn.date,
+      damage,
+      at,
+      source: 'activity'
+    });
+
+    checkIn.bossActivityApplied = {
+      bossId: BOSS.id,
+      damage,
+      at
+    };
+
+    changed = true;
+
+    if (result.defeatedNow) {
       boss.defeated = true;
       boss.defeatedAt = at;
 
-      if (!boss.rewardGranted) {
-        boss.rewardGranted = true;
-        workout.bossRewardXp = BOSS.rewardXp;
-        workout.completionXp = (Number(workout.completionXp) || 0) + BOSS.rewardXp;
-        workout.completionSummary = `${workout.completionSummary || 'Adventure completed'} · Boss victory +${BOSS.rewardXp} XP`;
+      const workout = (data.workouts || [])
+        .find(item => item.date === checkIn.date && item.completed);
 
-        if (!data.ui.rpg.inventory.some(item => item.id === BOSS.loot.id)) {
-          data.ui.rpg.inventory.push({ ...BOSS.loot, earnedAt: at, source: BOSS.name });
-        }
-      }
+      grantVictory(data, boss, workout || null, at);
     }
 
-    lastResult = { attack, defeatedNow };
+    lastResult = result;
   }
 
   return { changed, lastResult, boss };
@@ -174,48 +317,128 @@ function render(data) {
   if (!statsGrid) return;
 
   let card = $('#fitquestBossBattle');
+
   if (!card) {
     card = document.createElement('section');
     card.id = 'fitquestBossBattle';
     card.className = 'fitquest-boss-card';
     statsGrid.insertAdjacentElement('afterend', card);
+    window.dispatchEvent(new CustomEvent('fitquest:boss-ready'));
   }
 
   const boss = ensureBoss(data);
-  const hpPercent = boss.maxHp ? Math.max(0, Math.min(100, (boss.hp / boss.maxHp) * 100)) : 0;
-  const totalDamage = boss.attacks.reduce((sum, attack) => sum + (Number(attack.damage) || 0), 0);
-  const lastHit = boss.lastAttack?.damage ? `${boss.lastAttack.damage} damage` : 'No strikes yet';
+
+  const hpPercent = boss.maxHp
+    ? Math.max(0, Math.min(100, (boss.hp / boss.maxHp) * 100))
+    : 0;
+
+  const totalDamage =
+    boss.attacks.reduce(
+      (sum, attack) => sum + (Number(attack.damage) || 0),
+      0
+    );
+
+  const lastHit = boss.lastAttack?.damage
+    ? `${boss.lastAttack.damage} damage · ${
+        boss.lastAttack.source === 'activity'
+          ? '⌚ Activity'
+          : '⚔️ Adventure'
+      }`
+    : 'No strikes yet';
+
   const today = new Date();
-  const todayIso = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
-  const current = (data.workouts || []).find(w => w.date === todayIso);
-  const preview = current && !current.completed && (current.exercises || []).length
-    ? damageFor(current, streakFor(data, todayIso))
-    : null;
-  const loot = data.ui.rpg.inventory.find(item => item.id === BOSS.loot.id);
+
+  const todayIso =
+    `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
+
+  const current =
+    (data.workouts || []).find(w => w.date === todayIso);
+
+  const activity =
+    activityForDate(data, todayIso);
+
+  const adventurePreview =
+    current &&
+    !current.completed &&
+    (current.exercises || []).length
+      ? damageFor(current, streakFor(data, todayIso))
+      : null;
+
+  const fieldPreview =
+    activity &&
+    !activity.bossActivityApplied
+      ? activityDamage(activity)
+      : null;
+
+  const loot =
+    data.ui.rpg.inventory.find(item => item.id === BOSS.loot.id);
+
+  const previewText = boss.defeated
+    ? 'The gate is broken. Your first campaign boss has fallen.'
+    : adventurePreview || fieldPreview
+    ? [
+        adventurePreview
+          ? `Finish today’s Adventure for about ${adventurePreview} damage.`
+          : null,
+        fieldPreview
+          ? `Your saved Daily Activity is worth ${fieldPreview} field damage.`
+          : null
+      ].filter(Boolean).join(' ')
+    : 'Complete an Adventure or save Apple Watch activity to attack. Steps, active calories, exercise minutes, strength, cardio, and streaks all matter.';
 
   card.innerHTML = `
     <div class="fitquest-boss-head">
       <div class="fitquest-boss-heading">
         <div class="fitquest-boss-icon">${BOSS.icon}</div>
-        <div><p class="fitquest-boss-eyebrow">WEEKLY BOSS · FIRST FORGE</p><h3>${BOSS.name}</h3><small>${BOSS.title}</small></div>
+        <div>
+          <p class="fitquest-boss-eyebrow">WEEKLY BOSS · FIRST FORGE</p>
+          <h3>${BOSS.name}</h3>
+          <small>${BOSS.title}</small>
+        </div>
       </div>
-      <span class="fitquest-boss-status ${boss.defeated ? 'defeated' : ''}">${boss.defeated ? '✓ DEFEATED' : '⚔ ACTIVE BATTLE'}</span>
+      <span class="fitquest-boss-status ${boss.defeated ? 'defeated' : ''}">
+        ${boss.defeated ? '✓ DEFEATED' : '⚔ ACTIVE BATTLE'}
+      </span>
     </div>
-    <div class="fitquest-boss-hp-row"><span>Boss Health</span><strong>${Math.round(boss.hp)} / ${boss.maxHp} HP</strong></div>
-    <div class="fitquest-boss-bar" aria-label="Boss health"><i style="width:${hpPercent}%"></i></div>
+
+    <div class="fitquest-boss-hp-row">
+      <span>Boss Health</span>
+      <strong>${Math.round(boss.hp)} / ${boss.maxHp} HP</strong>
+    </div>
+
+    <div class="fitquest-boss-bar" aria-label="Boss health">
+      <i style="width:${hpPercent}%"></i>
+    </div>
+
     <div class="fitquest-boss-grid">
-      <div><small>Adventures Struck</small><strong>${boss.attacks.length}</strong></div>
-      <div><small>Total Damage</small><strong>${Math.round(totalDamage)}</strong></div>
-      <div><small>Last Strike</small><strong>${lastHit}</strong></div>
+      <div>
+        <small>Strikes Landed</small>
+        <strong>${boss.attacks.length}</strong>
+      </div>
+      <div>
+        <small>Total Damage</small>
+        <strong>${Math.round(totalDamage)}</strong>
+      </div>
+      <div>
+        <small>Last Strike</small>
+        <strong>${lastHit}</strong>
+      </div>
     </div>
-    <div class="fitquest-boss-callout">${boss.defeated ? 'The gate is broken. Your first campaign boss has fallen.' : preview ? `Finish today’s Adventure to strike for about ${preview} damage. Streaks increase your attack power.` : 'Complete an Adventure to attack. More moves, strength sets, cardio minutes, and streak days increase your damage.'}</div>
-    ${loot ? `<div class="fitquest-boss-loot">${loot.icon} <strong>${loot.rarity} Loot Unlocked:</strong> ${loot.name} · +${BOSS.rewardXp} victory XP</div>` : `<div class="fitquest-boss-loot">🔒 Victory Reward: ${BOSS.loot.name} + ${BOSS.rewardXp} XP</div>`}
+
+    <div class="fitquest-boss-callout">${previewText}</div>
+
+    ${
+      loot
+        ? `<div class="fitquest-boss-loot">${loot.icon} <strong>${loot.rarity} Loot Unlocked:</strong> ${loot.name} · +${BOSS.rewardXp} victory XP</div>`
+        : `<div class="fitquest-boss-loot">🔒 Victory Reward: ${BOSS.loot.name} + ${BOSS.rewardXp} XP</div>`
+    }
   `;
 }
 
 function flash() {
   const card = $('#fitquestBossBattle');
   if (!card) return;
+
   card.classList.remove('fitquest-boss-flash');
   void card.offsetWidth;
   card.classList.add('fitquest-boss-flash');
@@ -224,22 +447,30 @@ function flash() {
 async function refresh() {
   if (busy || document.hidden) return;
   if (!$('#appRoot') || $('#appRoot').hidden) return;
+
   busy = true;
 
   try {
     const cloud = await readCloudSave();
     const data = cloud?.save;
+
     if (!data) return;
 
     const result = applyPendingAttacks(data);
-    if (result.changed) await writeSave(data);
+
+    if (result.changed) {
+      await writeSave(data);
+    }
 
     render(data);
 
     if (result.lastResult) {
       flash();
+
       if (result.lastResult.defeatedNow) {
         toast(`🏆 ${BOSS.name} defeated! ${BOSS.loot.name} unlocked.`);
+      } else if (result.lastResult.attack.source === 'activity') {
+        toast(`⌚ Field strike! ${result.lastResult.attack.damage} damage from Daily Activity.`);
       } else {
         toast(`⚔️ Boss strike! ${result.lastResult.attack.damage} damage dealt.`);
       }
@@ -260,9 +491,15 @@ function boot() {
   styles();
 
   let attempts = 0;
+
   const timer = setInterval(() => {
     attempts++;
-    if ($('#appRoot') && !$('#appRoot').hidden && $('.stats-grid')) {
+
+    if (
+      $('#appRoot') &&
+      !$('#appRoot').hidden &&
+      $('.stats-grid')
+    ) {
       clearInterval(timer);
       void refresh();
     } else if (attempts > 100) {
@@ -271,12 +508,25 @@ function boot() {
   }, 150);
 
   window.addEventListener('fitquest:sync', event => {
-    if (event.detail?.status === 'synced') scheduleRefresh(650);
+    if (event.detail?.status === 'synced') {
+      scheduleRefresh(650);
+    }
   });
 
-  window.addEventListener('fitquest:remote-update', () => scheduleRefresh(250));
+  window.addEventListener('fitquest:remote-update', () =>
+    scheduleRefresh(250)
+  );
+
+  window.addEventListener('fitquest:navigation', event => {
+    if (event.detail?.screen === 'home') {
+      scheduleRefresh(120);
+    }
+  });
+
   document.addEventListener('visibilitychange', () => {
-    if (!document.hidden) scheduleRefresh(200);
+    if (!document.hidden) {
+      scheduleRefresh(200);
+    }
   });
 }
 
