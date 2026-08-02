@@ -1,4 +1,4 @@
-const PBKDF2_ITERATIONS = 120000;
+const PBKDF2_ITERATIONS = 100000;
 const SESSION_DAYS = 30;
 
 function json(data, status = 200, headers = {}) {
