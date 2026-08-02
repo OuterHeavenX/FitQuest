@@ -153,6 +153,10 @@ function styles() {
       text-align: center;
     }
 
+    .fitquest-mobile-actions {
+      display: none;
+    }
+
     @keyframes fqScreenIn {
       from { opacity: 0; transform: translateY(4px); }
       to { opacity: 1; transform: translateY(0); }
@@ -177,6 +181,67 @@ function styles() {
     @media (max-width: 720px) {
       body {
         padding-bottom: calc(var(--fq-nav-height) + env(safe-area-inset-bottom, 0px));
+      }
+
+      /* Compact native-app-style header */
+      .topbar {
+        min-height: 64px;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: space-between !important;
+        gap: 12px !important;
+        margin: 0 0 12px !important;
+        padding: 10px 2px 8px !important;
+      }
+
+      .topbar > div:first-child {
+        min-width: 0;
+      }
+
+      .topbar > div:first-child .eyebrow {
+        display: none !important;
+      }
+
+      .topbar > div:first-child h1 {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin: 0 !important;
+        font-size: 25px !important;
+        line-height: 1 !important;
+        white-space: nowrap;
+      }
+
+      .topbar .beta {
+        font-size: 9px !important;
+        padding: 5px 7px !important;
+      }
+
+      .header-actions {
+        display: flex !important;
+        align-items: center !important;
+        justify-content: flex-end !important;
+        gap: 0 !important;
+        margin: 0 !important;
+        min-width: auto !important;
+      }
+
+      /* Hide global utilities on mobile. Their replacements live in tabs. */
+      .header-actions #opsStatus,
+      .header-actions #newWorkoutBtn,
+      .header-actions #verificationChip,
+      .header-actions #accountBtn,
+      .header-actions #logoutBtn,
+      .header-actions #fitquestSyncChip {
+        display: none !important;
+      }
+
+      .header-actions #levelChip {
+        display: inline-flex !important;
+        min-width: 70px !important;
+        min-height: 48px !important;
+        padding: 8px 13px !important;
+        border-radius: 17px !important;
       }
 
       #fitquestAppNav {
@@ -206,12 +271,71 @@ function styles() {
         font-size: 18px;
       }
 
-      .topbar {
-        margin-bottom: 12px;
-      }
-
       #fitquestScreenHost {
         min-height: 72vh;
+      }
+
+      .fitquest-screen.active {
+        gap: 16px;
+      }
+
+      .fitquest-screen-title {
+        gap: 3px;
+        margin: 0 2px -2px;
+      }
+
+      .fitquest-screen-title p {
+        font-size: 9px;
+      }
+
+      .fitquest-screen-title h2 {
+        font-size: 24px;
+      }
+
+      .fitquest-screen-title small {
+        font-size: 12px;
+        line-height: 1.4;
+      }
+
+      .fitquest-mobile-actions {
+        display: flex;
+        align-items: stretch;
+        gap: 9px;
+        margin-top: 3px;
+      }
+
+      .fitquest-mobile-action {
+        flex: 1;
+        min-height: 46px;
+        border-radius: 14px;
+        border: 1px solid rgba(255,255,255,.10);
+        background: rgba(255,255,255,.045);
+        color: #dce3f5;
+        font: inherit;
+        font-size: 12px;
+        font-weight: 850;
+        cursor: pointer;
+      }
+
+      .fitquest-mobile-action.primary {
+        border-color: rgba(91, 213, 220, .24);
+        background:
+          linear-gradient(
+            135deg,
+            rgba(76, 195, 212, .16),
+            rgba(108, 100, 255, .18)
+          );
+        color: #e8ffff;
+      }
+
+      .fitquest-mobile-action.danger {
+        color: #ff9ca7;
+        border-color: rgba(255, 110, 120, .20);
+      }
+
+      /* Once verified, keep the success state in Account instead of wasting Home space. */
+      #verificationBanner.fitquest-verified-complete {
+        display: none !important;
       }
     }
 
@@ -223,6 +347,14 @@ function styles() {
 
       .fitquest-nav-btn {
         font-size: 8px;
+      }
+
+      .topbar > div:first-child h1 {
+        font-size: 23px !important;
+      }
+
+      .header-actions #levelChip {
+        min-width: 64px !important;
       }
     }
   `;
@@ -283,6 +415,12 @@ function screenTemplate(id) {
       </div>
       <small>${help}</small>
     </div>
+
+    <div
+      class="fitquest-mobile-actions"
+      id="fitquestMobileActions-${id}"
+    ></div>
+
     <div
       class="fitquest-screen-grid"
       id="fitquestScreenGrid-${id}"
@@ -328,7 +466,80 @@ function makeShell() {
     });
   });
 
+  installMobileActions();
+
   return true;
+}
+
+function mobileActionButton({
+  label,
+  className = '',
+  onClick
+}) {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = `fitquest-mobile-action ${className}`.trim();
+  button.textContent = label;
+  button.addEventListener('click', onClick);
+  return button;
+}
+
+function installMobileActions() {
+  const home = $('#fitquestMobileActions-home');
+  const training = $('#fitquestMobileActions-training');
+  const character = $('#fitquestMobileActions-character');
+
+  if (home && !home.children.length) {
+    home.appendChild(
+      mobileActionButton({
+        label: '⚔️ New Adventure',
+        className: 'primary',
+        onClick: () => $('#newWorkoutBtn')?.click()
+      })
+    );
+
+    home.appendChild(
+      mobileActionButton({
+        label: '👤 Account',
+        onClick: () => $('#accountBtn')?.click()
+      })
+    );
+  }
+
+  if (training && !training.children.length) {
+    training.appendChild(
+      mobileActionButton({
+        label: '⚔️ New Adventure',
+        className: 'primary',
+        onClick: () => $('#newWorkoutBtn')?.click()
+      })
+    );
+
+    training.appendChild(
+      mobileActionButton({
+        label: '＋ Exercise',
+        onClick: () => $('#addExerciseBtn')?.click()
+      })
+    );
+  }
+
+  if (character && !character.children.length) {
+    character.appendChild(
+      mobileActionButton({
+        label: '👤 Account & Security',
+        className: 'primary',
+        onClick: () => $('#accountBtn')?.click()
+      })
+    );
+
+    character.appendChild(
+      mobileActionButton({
+        label: 'Sign Out',
+        className: 'danger',
+        onClick: () => $('#logoutBtn')?.click()
+      })
+    );
+  }
 }
 
 function grid(id) {
@@ -342,7 +553,22 @@ function moveIfPresent(node, destination) {
 }
 
 function findOriginalTwoCols() {
-  return [...document.querySelectorAll('#appRoot main > .two-col, #fitquestScreenHost .two-col')];
+  return [...document.querySelectorAll(
+    '#appRoot main > .two-col, #fitquestScreenHost .two-col'
+  )];
+}
+
+function updateVerificationPresentation() {
+  const banner = $('#verificationBanner');
+  if (!banner) return;
+
+  const message = String(banner.textContent || '').trim().toLowerCase();
+  const verified =
+    message.includes('email is verified') ||
+    message.includes('email verified') ||
+    message.includes('verified successfully');
+
+  banner.classList.toggle('fitquest-verified-complete', verified);
 }
 
 function arrange() {
@@ -373,6 +599,7 @@ function arrange() {
 
   // Activity
   moveIfPresent($('#fitquestDailyActivity'), activity);
+  moveIfPresent($('#fitquestWeeklyActivity'), activity);
 
   // Character
   moveIfPresent($('.character-card'), character);
@@ -385,17 +612,17 @@ function arrange() {
   moveIfPresent($('.mission-dossier'), progress);
   moveIfPresent($('.chronicle'), progress);
 
-  // Clean up empty structural wrappers left behind.
   findOriginalTwoCols().forEach(wrapper => {
     if (!wrapper.children.length) wrapper.remove();
   });
 
-  // Keep the boss immediately after the stat cards when it appears later.
-  if ($('#fitquestBossBattle') && $('#fitquestBossBattle').parentElement !== home) {
+  if (
+    $('#fitquestBossBattle') &&
+    $('#fitquestBossBattle').parentElement !== home
+  ) {
     home.appendChild($('#fitquestBossBattle'));
   }
 
-  // Make Nutrition/Activity feel intentional even before data exists.
   if (activity && !activity.querySelector('#fitquestDailyActivity')) {
     if (!activity.querySelector('.fitquest-screen-empty')) {
       const empty = document.createElement('div');
@@ -406,10 +633,14 @@ function arrange() {
   } else {
     activity?.querySelector('.fitquest-screen-empty')?.remove();
   }
+
+  installMobileActions();
+  updateVerificationPresentation();
 }
 
 function showScreen(id, options = {}) {
   if (!SCREENS.some(screen => screen.id === id)) id = 'home';
+
   currentScreen = id;
 
   $$('.fitquest-screen').forEach(screen => {
@@ -429,11 +660,16 @@ function showScreen(id, options = {}) {
   } catch {}
 
   if (!options.noScroll) {
-    const top = $('#fitquestAppNav');
-    if (top && window.innerWidth > 720) {
-      top.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    if (window.innerWidth > 720) {
+      $('#fitquestAppNav')?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'start'
+      });
     } else {
-      window.scrollTo({ top: 0, behavior: 'smooth' });
+      window.scrollTo({
+        top: 0,
+        behavior: 'smooth'
+      });
     }
   }
 
@@ -455,28 +691,48 @@ function boot() {
   const timer = setInterval(() => {
     attempts++;
 
-    if ($('#appRoot') && !$('#appRoot').hidden && $('#appRoot main')) {
+    if (
+      $('#appRoot') &&
+      !$('#appRoot').hidden &&
+      $('#appRoot main')
+    ) {
       clearInterval(timer);
 
       makeShell();
       arrange();
 
       let saved = 'home';
+
       try {
-        saved = sessionStorage.getItem('fitquest-active-screen') || 'home';
+        saved =
+          sessionStorage.getItem('fitquest-active-screen') ||
+          'home';
       } catch {}
 
       showScreen(saved, { noScroll: true });
 
       observer = new MutationObserver(scheduleArrange);
-      observer.observe($('#appRoot main'), {
+
+      observer.observe($('#appRoot'), {
         childList: true,
-        subtree: true
+        subtree: true,
+        characterData: true
       });
 
-      window.addEventListener('fitquest:activity-ready', scheduleArrange);
-      window.addEventListener('fitquest:boss-ready', scheduleArrange);
-      window.addEventListener('fitquest:history-ready', scheduleArrange);
+      window.addEventListener(
+        'fitquest:activity-ready',
+        scheduleArrange
+      );
+
+      window.addEventListener(
+        'fitquest:boss-ready',
+        scheduleArrange
+      );
+
+      window.addEventListener(
+        'fitquest:history-ready',
+        scheduleArrange
+      );
     } else if (attempts > 120) {
       clearInterval(timer);
     }
@@ -488,7 +744,11 @@ export function navigateFitQuest(screen) {
 }
 
 if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', boot, { once: true });
+  document.addEventListener(
+    'DOMContentLoaded',
+    boot,
+    { once: true }
+  );
 } else {
   boot();
 }
