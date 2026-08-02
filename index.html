@@ -1909,17 +1909,66 @@
     });
 
 
-    loginForm.addEventListener('submit', event => {
+    loginForm.addEventListener('submit', async event => {
 
-      event.preventDefault();
+  event.preventDefault();
+
+  loginMessage.className = 'auth-message';
+  loginMessage.textContent = 'Signing in…';
+
+  const email =
+    document.getElementById('loginEmail').value.trim();
+
+  const password =
+    document.getElementById('loginPassword').value;
+
+  try {
+
+    const response = await fetch('/api/auth/login', {
+      method: 'POST',
+
+      headers: {
+        'Content-Type': 'application/json'
+      },
+
+      body: JSON.stringify({
+        email,
+        password
+      })
+    });
+
+    const result = await response.json();
+
+    if (!response.ok || !result.ok) {
 
       loginMessage.className =
-        'auth-message';
+        'auth-message error';
 
       loginMessage.textContent =
-        'Login is the next backend step we are connecting.';
+        result.error || 'Unable to sign in.';
 
-    });
+      return;
+    }
+
+    loginMessage.className =
+      'auth-message success';
+
+    loginMessage.textContent =
+      'Welcome back. Loading your campaign…';
+
+    enterApp();
+
+  } catch (error) {
+
+    loginMessage.className =
+      'auth-message error';
+
+    loginMessage.textContent =
+      'Unable to reach FitQuest. Try again.';
+
+  }
+
+});
   </script>
 
 
