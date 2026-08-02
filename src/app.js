@@ -201,8 +201,9 @@ function renderWeek(){
 
   $('#weeklySummary').textContent =
     `${stats.workouts} adventure${stats.workouts===1?'':'s'} logged · ${stats.strengthSets} strength sets · ${stats.cardio} cardio minutes.`;
+  
 }
-}
+
 function renderAchievements(summary){
   $('#achievementCount').textContent = `${summary.unlocked.length} / ${summary.total.toLocaleString()}`; const unlocked=summary.unlocked.slice(-3).reverse(); const upcoming=summary.archive.filter(a=>!a.unlocked&&a.kind!=='landmark'&&a.kind!=='secret').slice(0,2); const cards=[...unlocked,...upcoming].slice(0,5);
   $('#achievementPreview').innerHTML=cards.map(a=>`<div class="achievement ${a.unlocked?'unlocked':'locked'}"><span>${a.unlocked?a.icon:'🔒'}</span><div><strong>${escapeHtml(a.name)}</strong><small>${a.unlocked?(a.flavor||'Achievement unlocked'):`Target: ${a.target.toLocaleString()}`}</small></div></div>`).join('');
