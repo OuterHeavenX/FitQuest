@@ -1,98 +1,84 @@
 const PBKDF2_ITERATIONS = 120000;
 const SESSION_DAYS = 30;
 
-
-// ---------------------------------------------------------
-// BASIC HELPERS
-// ---------------------------------------------------------
-
-function json(data, status = 200, extraHeaders = {}) {
+function json(data, status = 200, headers = {}) {
   return Response.json(data, {
     status,
     headers: {
       'Cache-Control': 'no-store',
-      ...extraHeaders
+      ...headers
     }
   });
 }
 
+function b64(bytes) {
+  let s = '';
 
-function bytesToBase64(bytes) {
-  let binary = '';
-
-  for (const byte of bytes) {
-    binary += String.fromCharCode(byte);
+  for (const b of bytes) {
+    s += String.fromCharCode(b);
   }
 
-  return btoa(binary);
+  return btoa(s);
 }
 
+function fromB64(s) {
+  const bin = atob(s);
 
-function base64ToBytes(base64) {
-  const binary = atob(base64);
-  const bytes = new Uint8Array(binary.length);
-
-  for (let i = 0; i < binary.length; i++) {
-    bytes[i] = binary.charCodeAt(i);
-  }
-
-  return bytes;
+  return Uint8Array.from(
+    bin,
+    c => c.charCodeAt(0)
+  );
 }
 
-
-function bytesToBase64Url(bytes) {
-  return bytesToBase64(bytes)
+function b64url(bytes) {
+  return b64(bytes)
     .replace(/\+/g, '-')
     .replace(/\//g, '_')
     .replace(/=+$/g, '');
 }
 
-
-function bytesToHex(bytes) {
-  return Array.from(bytes)
-    .map(byte => byte.toString(16).padStart(2, '0'))
-    .join('');
+function hex(bytes) {
+  return Array.from(
+    bytes,
+    b => b.toString(16).padStart(2, '0')
+  ).join('');
 }
 
-
-function constantTimeEqual(a, b) {
+function equalBytes(a, b) {
   if (a.length !== b.length) {
     return false;
   }
 
-  let difference = 0;
+  let diff = 0;
 
   for (let i = 0; i < a.length; i++) {
-    difference |= a[i] ^ b[i];
+    diff |= a[i] ^ b[i];
   }
 
-  return difference === 0;
+  return diff === 0;
 }
 
+function cookies(request) {
+  const out = {};
 
-function parseCookies(request) {
-  const cookieHeader = request.headers.get('Cookie') || '';
-  const cookies = {};
+  const header =
+    request.headers.get('Cookie') || '';
 
-  for (const part of cookieHeader.split(';')) {
-    const index = part.indexOf('=');
+  for (const part of header.split(';')) {
+    const i = part.indexOf('=');
 
-    if (index === -1) {
-      continue;
+    if (i > -1) {
+      out[part.slice(0, i).trim()] =
+        part.slice(i + 1).trim();
     }
-
-    const name = part.slice(0, index).trim();
-    const value = part.slice(index + 1).trim();
-
-    cookies[name] = value;
   }
 
-  return cookies;
+  return out;
 }
-
 
 function sessionCookie(token) {
-  const maxAge = SESSION_DAYS * 24 * 60 * 60;
+  const maxAge =
+    SESSION_DAYS * 24 * 60 * 60;
 
   return [
     `fitquest_session=${token}`,
@@ -104,8 +90,7 @@ function sessionCookie(token) {
   ].join('; ');
 }
 
-
-function clearSessionCookie() {
+function clearCookie() {
   return [
     'fitquest_session=',
     'Path=/',
@@ -116,114 +101,95 @@ function clearSessionCookie() {
   ].join('; ');
 }
 
-
-function sqliteDateTime(date) {
-  return date
-    .toISOString()
-    .replace('T', ' ')
-    .replace(/\.\d{3}Z$/, '');
-}
-
-
-// ---------------------------------------------------------
-// PASSWORD HASHING
-// ---------------------------------------------------------
-
 async function hashPassword(password) {
-  const encoder = new TextEncoder();
+  const enc = new TextEncoder();
 
-  const salt = crypto.getRandomValues(
-    new Uint8Array(16)
-  );
+  const salt =
+    crypto.getRandomValues(
+      new Uint8Array(16)
+    );
 
-  const keyMaterial = await crypto.subtle.importKey(
-    'raw',
-    encoder.encode(password),
-    'PBKDF2',
-    false,
-    ['deriveBits']
-  );
-
-  const bits = await crypto.subtle.deriveBits(
-    {
-      name: 'PBKDF2',
-      hash: 'SHA-256',
-      salt,
-      iterations: PBKDF2_ITERATIONS
-    },
-    keyMaterial,
-    256
-  );
-
-  const hash = new Uint8Array(bits);
-
-  return [
-    'pbkdf2-sha256',
-    PBKDF2_ITERATIONS,
-    bytesToBase64(salt),
-    bytesToBase64(hash)
-  ].join('$');
-}
-
-
-async function verifyPassword(password, storedHash) {
-  try {
-    const parts = String(storedHash).split('$');
-
-    if (parts.length !== 4) {
-      return false;
-    }
-
-    const [
-      algorithm,
-      iterationText,
-      saltBase64,
-      hashBase64
-    ] = parts;
-
-    if (algorithm !== 'pbkdf2-sha256') {
-      return false;
-    }
-
-    const iterations = Number(iterationText);
-
-    if (
-      !Number.isInteger(iterations) ||
-      iterations < 10000 ||
-      iterations > 1000000
-    ) {
-      return false;
-    }
-
-    const salt = base64ToBytes(saltBase64);
-    const expectedHash = base64ToBytes(hashBase64);
-
-    const encoder = new TextEncoder();
-
-    const keyMaterial = await crypto.subtle.importKey(
+  const key =
+    await crypto.subtle.importKey(
       'raw',
-      encoder.encode(password),
+      enc.encode(password),
       'PBKDF2',
       false,
       ['deriveBits']
     );
 
-    const bits = await crypto.subtle.deriveBits(
+  const bits =
+    await crypto.subtle.deriveBits(
       {
         name: 'PBKDF2',
         hash: 'SHA-256',
         salt,
-        iterations
+        iterations: PBKDF2_ITERATIONS
       },
-      keyMaterial,
-      expectedHash.length * 8
+      key,
+      256
     );
 
-    const actualHash = new Uint8Array(bits);
+  return [
+    'pbkdf2-sha256',
+    PBKDF2_ITERATIONS,
+    b64(salt),
+    b64(new Uint8Array(bits))
+  ].join('$');
+}
 
-    return constantTimeEqual(
-      actualHash,
-      expectedHash
+async function verifyPassword(
+  password,
+  stored
+) {
+  try {
+    const [
+      alg,
+      iterText,
+      saltText,
+      hashText
+    ] = String(stored).split('$');
+
+    if (alg !== 'pbkdf2-sha256') {
+      return false;
+    }
+
+    const iterations =
+      Number(iterText);
+
+    const salt =
+      fromB64(saltText);
+
+    const expected =
+      fromB64(hashText);
+
+    const enc =
+      new TextEncoder();
+
+    const key =
+      await crypto.subtle.importKey(
+        'raw',
+        enc.encode(password),
+        'PBKDF2',
+        false,
+        ['deriveBits']
+      );
+
+    const bits =
+      await crypto.subtle.deriveBits(
+        {
+          name: 'PBKDF2',
+          hash: 'SHA-256',
+          salt,
+          iterations
+        },
+        key,
+        expected.length * 8
+      );
+
+    return equalBytes(
+      new Uint8Array(bits),
+      expected
     );
 
   } catch {
@@ -231,46 +197,41 @@ async function verifyPassword(password, storedHash) {
   }
 }
 
+async function tokenHash(token) {
+  const digest =
+    await crypto.subtle.digest(
+      'SHA-256',
+      new TextEncoder().encode(token)
+    );
 
-// ---------------------------------------------------------
-// SESSION HELPERS
-// ---------------------------------------------------------
-
-async function hashSessionToken(token) {
-  const bytes = new TextEncoder().encode(token);
-
-  const digest = await crypto.subtle.digest(
-    'SHA-256',
-    bytes
-  );
-
-  return bytesToHex(
+  return hex(
     new Uint8Array(digest)
   );
 }
 
+async function createSession(
+  env,
+  userId
+) {
+  const raw =
+    b64url(
+      crypto.getRandomValues(
+        new Uint8Array(32)
+      )
+    );
 
-async function createSession(env, userId) {
-  const randomBytes = crypto.getRandomValues(
-    new Uint8Array(32)
-  );
+  const hashed =
+    await tokenHash(raw);
 
-  const rawToken = bytesToBase64Url(randomBytes);
-
-  const tokenHash = await hashSessionToken(
-    rawToken
-  );
-
-  const expires = new Date(
-    Date.now() +
-    SESSION_DAYS *
-    24 *
-    60 *
-    60 *
-    1000
-  );
-
-  const expiresAt = sqliteDateTime(expires);
+  const expiresAt =
+    new Date(
+      Date.now() +
+      SESSION_DAYS *
+      24 *
+      60 *
+      60 *
+      1000
+    ).toISOString();
 
   await env.DB.prepare(
     `INSERT INTO sessions
@@ -289,92 +250,74 @@ async function createSession(env, userId) {
       )`
   )
     .bind(
-      tokenHash,
+      hashed,
       userId,
       expiresAt
     )
     .run();
 
-  return {
-    rawToken,
-    expiresAt
-  };
+  return raw;
 }
 
+async function currentUser(
+  request,
+  env
+) {
+  const raw =
+    cookies(request)
+      .fitquest_session;
 
-async function getCurrentUser(request, env) {
-  const cookies = parseCookies(request);
-
-  const rawToken = cookies.fitquest_session;
-
-  if (!rawToken) {
+  if (!raw) {
     return null;
   }
 
-  const tokenHash = await hashSessionToken(
-    rawToken
-  );
+  const hashed =
+    await tokenHash(raw);
 
-  const session = await env.DB.prepare(
+  return env.DB.prepare(
     `SELECT
-       sessions.token,
-       sessions.user_id,
-       sessions.expires_at,
+       users.id,
        users.email
      FROM sessions
      JOIN users
        ON users.id = sessions.user_id
      WHERE sessions.token = ?
-       AND sessions.expires_at > CURRENT_TIMESTAMP
+       AND sessions.expires_at >
+           CURRENT_TIMESTAMP
      LIMIT 1`
   )
-    .bind(tokenHash)
+    .bind(hashed)
     .first();
-
-  if (!session) {
-    return null;
-  }
-
-  return {
-    id: session.user_id,
-    email: session.email,
-    tokenHash
-  };
 }
-
-
-// ---------------------------------------------------------
-// WORKER
-// ---------------------------------------------------------
 
 export default {
   async fetch(request, env) {
-    const url = new URL(request.url);
+    const url =
+      new URL(request.url);
 
 
-    // -----------------------------------------------------
     // HEALTH CHECK
-    // -----------------------------------------------------
 
     if (
       url.pathname === '/api/health' &&
       request.method === 'GET'
     ) {
       try {
-        const result = await env.DB.prepare(
-          'SELECT 1 AS ok'
-        ).first();
+        const row =
+          await env.DB.prepare(
+            'SELECT 1 AS ok'
+          ).first();
 
         return json({
           ok: true,
-          database: result?.ok === 1
+          database: row?.ok === 1
         });
 
       } catch (error) {
         return json(
           {
             ok: false,
-            error: error?.message || String(error)
+            error: error.message
           },
           500
         );
@@ -382,33 +325,31 @@ export default {
     }
 
 
-    // -----------------------------------------------------
-    // SIGN UP
-    // -----------------------------------------------------
+    // CREATE ACCOUNT
 
     if (
-      url.pathname === '/api/auth/signup' &&
+      url.pathname ===
+        '/api/auth/signup' &&
       request.method === 'POST'
     ) {
       try {
-        const body = await request.json();
+        const body =
+          await request.json();
 
-        const email = String(body.email || '')
-          .trim()
-          .toLowerCase();
+        const email =
+          String(body.email || '')
+            .trim()
+            .toLowerCase();
 
-        const password = String(
-          body.password || ''
-        );
+        const password =
+          String(body.password || '');
 
-        if (
-          !email ||
-          !email.includes('@')
-        ) {
+        if (!email.includes('@')) {
           return json(
             {
               ok: false,
-              error: 'Enter a valid email address.'
+              error:
+                'Enter a valid email address.'
             },
             400
           );
@@ -425,13 +366,14 @@ export default {
           );
         }
 
-        const existing = await env.DB.prepare(
-          `SELECT id
-           FROM users
-           WHERE email = ?`
-        )
-          .bind(email)
-          .first();
+        const existing =
+          await env.DB.prepare(
+            `SELECT id
+             FROM users
+             WHERE email = ?`
+          )
+            .bind(email)
+            .first();
 
         if (existing) {
           return json(
@@ -444,11 +386,11 @@ export default {
           );
         }
 
-        const id = crypto.randomUUID();
+        const id =
+          crypto.randomUUID();
 
-        const passwordHash = await hashPassword(
-          password
-        );
+        const passwordHash =
+          await hashPassword(password);
 
         await env.DB.prepare(
           `INSERT INTO users
@@ -473,10 +415,11 @@ export default {
           )
           .run();
 
-        const session = await createSession(
-          env,
-          id
-        );
+        const raw =
+          await createSession(
+            env,
+            id
+          );
 
         return json(
           {
@@ -489,9 +432,7 @@ export default {
           201,
           {
             'Set-Cookie':
-              sessionCookie(
-                session.rawToken
-              )
+              sessionCookie(raw)
           }
         );
 
@@ -505,7 +446,8 @@ export default {
           {
             ok: false,
             error:
-              error?.message || String(error)
+              error.message ||
+              String(error)
           },
           500
         );
@@ -513,69 +455,45 @@ export default {
     }
 
 
-    // -----------------------------------------------------
     // LOGIN
-    // -----------------------------------------------------
 
     if (
-      url.pathname === '/api/auth/login' &&
+      url.pathname ===
+        '/api/auth/login' &&
       request.method === 'POST'
     ) {
       try {
-        const body = await request.json();
+        const body =
+          await request.json();
 
-        const email = String(body.email || '')
-          .trim()
-          .toLowerCase();
+        const email =
+          String(body.email || '')
+            .trim()
+            .toLowerCase();
 
-        const password = String(
-          body.password || ''
-        );
+        const password =
+          String(body.password || '');
+
+        const user =
+          await env.DB.prepare(
+            `SELECT
+               id,
+               email,
+               password_hash
+             FROM users
+             WHERE email = ?
+             LIMIT 1`
+          )
+            .bind(email)
+            .first();
 
         if (
-          !email ||
-          !password
-        ) {
-          return json(
-            {
-              ok: false,
-              error:
-                'Enter your email and password.'
-            },
-            400
-          );
-        }
-
-        const user = await env.DB.prepare(
-          `SELECT
-             id,
-             email,
-             password_hash
-           FROM users
-           WHERE email = ?
-           LIMIT 1`
-        )
-          .bind(email)
-          .first();
-
-        if (!user) {
-          return json(
-            {
-              ok: false,
-              error:
-                'Incorrect email or password.'
-            },
-            401
-          );
-        }
-
-        const passwordCorrect =
-          await verifyPassword(
+          !user ||
+          !await verifyPassword(
             password,
             user.password_hash
-          );
-
-        if (!passwordCorrect) {
+          )
+        ) {
           return json(
             {
               ok: false,
@@ -588,13 +506,15 @@ export default {
 
         await env.DB.prepare(
           `DELETE FROM sessions
-           WHERE expires_at <= CURRENT_TIMESTAMP`
+           WHERE expires_at <=
+                 CURRENT_TIMESTAMP`
         ).run();
 
-        const session = await createSession(
-          env,
-          user.id
-        );
+        const raw =
+          await createSession(
+            env,
+            user.id
+          );
 
         return json(
           {
@@ -607,9 +527,7 @@ export default {
           200,
           {
             'Set-Cookie':
-              sessionCookie(
-                session.rawToken
-              )
+              sessionCookie(raw)
           }
         );
 
@@ -623,7 +541,8 @@ export default {
           {
             ok: false,
             error:
-              error?.message || String(error)
+              error.message ||
+              String(error)
           },
           500
         );
@@ -631,19 +550,19 @@ export default {
     }
 
 
-    // -----------------------------------------------------
-    // CURRENT USER
-    // -----------------------------------------------------
+    // CHECK CURRENT SESSION
 
     if (
-      url.pathname === '/api/auth/me' &&
+      url.pathname ===
+        '/api/auth/me' &&
       request.method === 'GET'
     ) {
       try {
-        const user = await getCurrentUser(
-          request,
-          env
-        );
+        const user =
+          await currentUser(
+            request,
+            env
+          );
 
         if (!user) {
           return json(
@@ -658,24 +577,17 @@ export default {
         return json({
           ok: true,
           authenticated: true,
-          user: {
-            id: user.id,
-            email: user.email
-          }
+          user
         });
 
       } catch (error) {
-        console.error(
-          'Session check error:',
-          error
-        );
-
         return json(
           {
             ok: false,
             authenticated: false,
             error:
-              error?.message || String(error)
+              error.message ||
+              String(error)
           },
           500
         );
@@ -683,31 +595,27 @@ export default {
     }
 
 
-    // -----------------------------------------------------
     // LOGOUT
-    // -----------------------------------------------------
 
     if (
-      url.pathname === '/api/auth/logout' &&
+      url.pathname ===
+        '/api/auth/logout' &&
       request.method === 'POST'
     ) {
       try {
-        const cookies = parseCookies(request);
+        const raw =
+          cookies(request)
+            .fitquest_session;
 
-        const rawToken =
-          cookies.fitquest_session;
-
-        if (rawToken) {
-          const tokenHash =
-            await hashSessionToken(
-              rawToken
-            );
+        if (raw) {
+          const hashed =
+            await tokenHash(raw);
 
           await env.DB.prepare(
             `DELETE FROM sessions
              WHERE token = ?`
           )
-            .bind(tokenHash)
+            .bind(hashed)
             .run();
         }
 
@@ -718,21 +626,17 @@ export default {
           200,
           {
             'Set-Cookie':
-              clearSessionCookie()
+              clearCookie()
           }
         );
 
       } catch (error) {
-        console.error(
-          'Logout error:',
-          error
-        );
-
         return json(
           {
             ok: false,
             error:
-              error?.message || String(error)
+              error.message ||
+              String(error)
           },
           500
         );
@@ -740,9 +644,7 @@ export default {
     }
 
 
-    // -----------------------------------------------------
-    // STATIC FITQUEST FILES
-    // -----------------------------------------------------
+    // NORMAL FITQUEST FILES
 
     return env.ASSETS.fetch(request);
   }
