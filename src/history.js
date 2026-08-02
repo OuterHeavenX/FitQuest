@@ -1,345 +1,43 @@
 import './history.css';
+import './account.js';
+import { readCloudSave, writeSave } from './lib/storage.js';
 
-const SAVE_KEY = 'fitquest-save-v1';
+const esc = value => String(value ?? '').replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
+const localDateISO = (d=new Date()) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+const dayName = date => new Intl.DateTimeFormat('en-US',{weekday:'long'}).format(new Date(`${date}T12:00:00`));
 
-const esc = value => String(value ?? '').replace(/[&<>'"]/g, c => ({
-  '&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'
-}[c]));
+async function load(){ try { return (await readCloudSave())?.save || null; } catch(e){ console.warn('History load failed',e); return null; } }
+async function save(data){ if(!await writeSave(data)) throw new Error('Cloud save failed.'); }
+function toast(message){ const el=document.getElementById('toast'); if(el){el.textContent=message;el.classList.add('show');clearTimeout(window.__fitquestHistoryToast);window.__fitquestHistoryToast=setTimeout(()=>el.classList.remove('show'),2600);}else alert(message); }
+function exerciseSummary(e){ if(e.type==='cardio'){const d=Number(e.distance)?` · ${Number(e.distance).toFixed(Number(e.distance)%1?2:0)} ${e.distanceUnit||'mi'}`:'';return `${Number(e.duration)||0} min${d}`;}return `${Number(e.sets)||0} × ${Number(e.reps)||0}${e.weight?` · ${esc(e.weight)}`:''}`; }
+function workoutTotals(w){const ex=w.exercises||[];return{strengthSets:ex.filter(e=>e.type==='strength').reduce((s,e)=>s+(Number(e.sets)||0),0),cardio:ex.filter(e=>e.type==='cardio').reduce((s,e)=>s+(Number(e.duration)||0),0),xp:ex.reduce((s,e)=>s+(Number(e.xp)||0),0)};}
+function ensureTargetWorkout(data,date){let w=(data.workouts||[]).find(x=>x.date===date);if(w)return w;const n=(data.workouts||[]).length+1;w={id:`${date}-history-${Date.now()}`,date,day:dayName(date),title:`Day ${n}: Recovered Adventure`,startTime:'',startTimeExact:null,note:'Created from Workout History.',exercises:[]};data.workouts||=[];data.workouts.push(w);return w;}
+function sortWorkouts(data){data.workouts=[...(data.workouts||[])].sort((a,b)=>String(a.date||'').localeCompare(String(b.date||'')));}
 
-const localDateISO = (d = new Date()) =>
-  `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
-
-function dayName(date) {
-  return new Intl.DateTimeFormat('en-US', { weekday: 'long' })
-    .format(new Date(`${date}T12:00:00`));
+function installUI(){
+  if(document.getElementById('workoutHistorySection'))return;
+  const chronicle=document.querySelector('.chronicle'); if(!chronicle)return;
+  const section=document.createElement('section');section.id='workoutHistorySection';section.className='card history-panel';section.innerHTML=`
+    <div class="section-heading"><div><p class="eyebrow">CAMPAIGN ARCHIVE · CLOUD INTEL</p><h3>Workout History</h3></div><div class="history-head-actions"><button class="ghost mini" id="historyBackupBtn" type="button">⬇ Backup</button><span class="pill" id="historyCount">0 days</span></div></div>
+    <p class="muted history-help">Workout History now edits the same cloud save used on every device. Move a whole workout, transfer one exercise, or export a JSON backup.</p>
+    <div id="historyList" class="history-list"><div class="empty-state">Loading cloud history…</div></div>`;
+  chronicle.parentNode.insertBefore(section,chronicle);
+  const dialog=document.createElement('dialog');dialog.id='moveExerciseDialog';dialog.innerHTML=`<form id="moveExerciseForm"><div class="dialog-head"><div><p class="eyebrow">FIELD TRANSFER</p><h3>Move Exercise</h3></div><button type="button" class="icon-btn" id="moveExerciseClose" aria-label="Close">×</button></div><p class="muted" id="moveExerciseLabel"></p><input type="hidden" id="moveSourceWorkoutId"><input type="hidden" id="moveExerciseIndex"><label>Move to date<input id="moveExerciseDate" type="date" required></label><button class="primary" type="submit">Transfer Exercise</button><p class="dialog-tip">If that date has no adventure yet, FitQuest creates one automatically.</p></form>`;document.body.appendChild(dialog);
+  document.getElementById('moveExerciseClose').addEventListener('click',()=>dialog.close());dialog.addEventListener('click',e=>{if(e.target===dialog)dialog.close();});document.getElementById('moveExerciseForm').addEventListener('submit',moveExercise);document.getElementById('historyBackupBtn').addEventListener('click',exportBackup);void renderHistory();
 }
 
-function load() {
-  try {
-    const data = JSON.parse(localStorage.getItem(SAVE_KEY));
-    return data && typeof data === 'object' ? data : null;
-  } catch {
-    return null;
-  }
+async function renderHistory(){
+  const data=await load(),list=document.getElementById('historyList');if(!list)return;if(!data){list.innerHTML='<div class="empty-state">Sign in to load Workout History from the cloud.</div>';return;}
+  const workouts=[...(data.workouts||[])].sort((a,b)=>String(b.date||'').localeCompare(String(a.date||'')));const active=workouts.filter(w=>(w.exercises||[]).length).length;document.getElementById('historyCount').textContent=`${active} active day${active===1?'':'s'}`;
+  if(!workouts.length){list.innerHTML='<div class="empty-state">No adventures recorded yet.</div>';return;}
+  list.innerHTML=workouts.map(w=>{const ex=w.exercises||[],t=workoutTotals(w),empty=!ex.length;return `<article class="history-day ${empty?'history-empty':''}" data-history-id="${esc(w.id)}"><div class="history-day-head"><div><span class="history-date">${esc(w.date||'Unknown date')} · ${esc(w.day||dayName(w.date))}</span><strong>${esc(w.title||'Untitled Adventure')}</strong><small>${ex.length} move${ex.length===1?'':'s'} · ${t.strengthSets} sets · ${t.cardio} cardio min · ${t.xp} XP</small></div><span class="history-status">${empty?'EMPTY RECORD':'☁ ✓ LOGGED'}</span></div><div class="history-date-editor"><label>Workout date<input type="date" value="${esc(w.date||'')}" data-workout-date="${esc(w.id)}"></label><button type="button" class="ghost mini" data-change-workout-date="${esc(w.id)}">Move Whole Day</button>${empty?`<button type="button" class="ghost mini danger-ghost" data-delete-empty="${esc(w.id)}">Remove Empty</button>`:''}</div><div class="history-exercises">${ex.length?ex.map((e,i)=>`<div class="history-exercise"><span class="history-exercise-icon">${esc(e.icon||(e.type==='cardio'?'🏃':'⚔️'))}</span><div><strong>${esc(e.name||'Exercise')}</strong><small>${exerciseSummary(e)} · +${Number(e.xp)||0} XP</small></div><button type="button" class="history-move-btn" data-move-exercise data-workout-id="${esc(w.id)}" data-exercise-index="${i}">↪ Move</button></div>`).join(''):'<div class="history-no-exercises">No exercises attached to this day.</div>'}</div></article>`;}).join('');
+  document.querySelectorAll('[data-change-workout-date]').forEach(b=>b.addEventListener('click',()=>void changeWorkoutDate(b.dataset.changeWorkoutDate)));document.querySelectorAll('[data-move-exercise]').forEach(b=>b.addEventListener('click',()=>void openMoveExercise(b.dataset.workoutId,Number(b.dataset.exerciseIndex))));document.querySelectorAll('[data-delete-empty]').forEach(b=>b.addEventListener('click',()=>void deleteEmptyWorkout(b.dataset.deleteEmpty)));
 }
 
-function save(data) {
-  localStorage.setItem(SAVE_KEY, JSON.stringify(data));
-}
+async function changeWorkoutDate(id){const data=await load(),source=(data?.workouts||[]).find(w=>w.id===id),input=document.querySelector(`[data-workout-date="${CSS.escape(id)}"]`),target=input?.value;if(!source||!target||target===source.date){toast('📅 Choose a different date first.');return;}const existing=(data.workouts||[]).find(w=>w.date===target&&w.id!==id);if(existing){existing.exercises||=[];existing.exercises.push(...(source.exercises||[]));existing.note=existing.note||source.note;data.workouts=data.workouts.filter(w=>w.id!==id);toast(`🗂️ Adventure merged into ${target}.`);}else{source.date=target;source.day=dayName(target);toast(`📅 Adventure moved to ${target}.`);}sortWorkouts(data);await save(data);setTimeout(()=>location.reload(),350);}
+async function openMoveExercise(id,index){const data=await load(),w=(data?.workouts||[]).find(x=>x.id===id),e=w?.exercises?.[index];if(!w||!e)return;document.getElementById('moveSourceWorkoutId').value=id;document.getElementById('moveExerciseIndex').value=String(index);document.getElementById('moveExerciseDate').value=w.date||localDateISO();document.getElementById('moveExerciseLabel').textContent=`${e.name} · currently ${w.date}`;document.getElementById('moveExerciseDialog').showModal();}
+async function moveExercise(ev){ev.preventDefault();const data=await load(),id=document.getElementById('moveSourceWorkoutId').value,index=Number(document.getElementById('moveExerciseIndex').value),targetDate=document.getElementById('moveExerciseDate').value,source=(data?.workouts||[]).find(w=>w.id===id);if(!source||!targetDate||!source.exercises?.[index])return;if(targetDate===source.date){toast('📅 That exercise is already on that date.');return;}const [exercise]=source.exercises.splice(index,1),target=ensureTargetWorkout(data,targetDate);target.exercises||=[];target.exercises.push({...exercise,movedFromDate:source.date,movedAt:new Date().toISOString()});sortWorkouts(data);await save(data);document.getElementById('moveExerciseDialog').close();toast(`↪ ${exercise.name} moved to ${targetDate}.`);setTimeout(()=>location.reload(),350);}
+async function deleteEmptyWorkout(id){const data=await load(),w=(data?.workouts||[]).find(x=>x.id===id);if(!w||(w.exercises||[]).length)return;data.workouts=data.workouts.filter(x=>x.id!==id);await save(data);toast('🧹 Empty adventure record removed.');setTimeout(()=>location.reload(),350);}
+async function exportBackup(){const data=await load();if(!data){toast('No FitQuest cloud save found to back up.');return;}const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=`fitquest-backup-${localDateISO()}.json`;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);toast('⬇ FitQuest cloud backup exported.');}
 
-function toast(message) {
-  const existing = document.getElementById('toast');
-  if (existing) {
-    existing.textContent = message;
-    existing.classList.add('show');
-    clearTimeout(window.__fitquestHistoryToast);
-    window.__fitquestHistoryToast = setTimeout(() => existing.classList.remove('show'), 2600);
-    return;
-  }
-  alert(message);
-}
-
-function exerciseSummary(e) {
-  if (e.type === 'cardio') {
-    const distance = Number(e.distance)
-      ? ` · ${Number(e.distance).toFixed(Number(e.distance) % 1 ? 2 : 0)} ${e.distanceUnit || 'mi'}`
-      : '';
-    return `${Number(e.duration) || 0} min${distance}`;
-  }
-  const weight = e.weight ? ` · ${esc(e.weight)}` : '';
-  return `${Number(e.sets) || 0} × ${Number(e.reps) || 0}${weight}`;
-}
-
-function workoutTotals(workout) {
-  const exercises = workout.exercises || [];
-  const strengthSets = exercises
-    .filter(e => e.type === 'strength')
-    .reduce((sum, e) => sum + (Number(e.sets) || 0), 0);
-  const cardio = exercises
-    .filter(e => e.type === 'cardio')
-    .reduce((sum, e) => sum + (Number(e.duration) || 0), 0);
-  const xp = exercises.reduce((sum, e) => sum + (Number(e.xp) || 0), 0);
-  return { strengthSets, cardio, xp };
-}
-
-function ensureTargetWorkout(data, date) {
-  let workout = (data.workouts || []).find(w => w.date === date);
-  if (workout) return workout;
-
-  const number = (data.workouts || []).length + 1;
-  workout = {
-    id: `${date}-history-${Date.now()}`,
-    date,
-    day: dayName(date),
-    title: `Day ${number}: Recovered Adventure`,
-    startTime: '',
-    startTimeExact: null,
-    note: 'Created from Workout History.',
-    exercises: []
-  };
-  data.workouts ||= [];
-  data.workouts.push(workout);
-  return workout;
-}
-
-function sortWorkouts(data) {
-  data.workouts = [...(data.workouts || [])].sort((a, b) =>
-    String(a.date || '').localeCompare(String(b.date || ''))
-  );
-}
-
-function installUI() {
-  if (document.getElementById('workoutHistorySection')) return;
-
-  const chronicle = document.querySelector('.chronicle');
-  if (!chronicle) return;
-
-  const section = document.createElement('section');
-  section.id = 'workoutHistorySection';
-  section.className = 'card history-panel';
-  section.innerHTML = `
-    <div class="section-heading">
-      <div>
-        <p class="eyebrow">CAMPAIGN ARCHIVE · EDITABLE INTEL</p>
-        <h3>Workout History</h3>
-      </div>
-      <div class="history-head-actions">
-        <button class="ghost mini" id="historyBackupBtn" type="button">⬇ Backup</button>
-        <span class="pill" id="historyCount">0 days</span>
-      </div>
-    </div>
-    <p class="muted history-help">
-      Inspect past adventures, change an entire workout date, or move one exercise to another day.
-      Date changes update the Adventure Map after reload.
-    </p>
-    <div id="historyList" class="history-list"></div>
-  `;
-  chronicle.parentNode.insertBefore(section, chronicle);
-
-  const dialog = document.createElement('dialog');
-  dialog.id = 'moveExerciseDialog';
-  dialog.innerHTML = `
-    <form id="moveExerciseForm">
-      <div class="dialog-head">
-        <div>
-          <p class="eyebrow">FIELD TRANSFER</p>
-          <h3>Move Exercise</h3>
-        </div>
-        <button type="button" class="icon-btn" id="moveExerciseClose" aria-label="Close">×</button>
-      </div>
-      <p class="muted" id="moveExerciseLabel"></p>
-      <input type="hidden" id="moveSourceWorkoutId">
-      <input type="hidden" id="moveExerciseIndex">
-      <label>Move to date
-        <input id="moveExerciseDate" type="date" required>
-      </label>
-      <button class="primary" type="submit">Transfer Exercise</button>
-      <p class="dialog-tip">If that date has no adventure yet, FitQuest creates one automatically.</p>
-    </form>
-  `;
-  document.body.appendChild(dialog);
-
-  document.getElementById('moveExerciseClose').addEventListener('click', () => dialog.close());
-  dialog.addEventListener('click', ev => {
-    if (ev.target === dialog) dialog.close();
-  });
-  document.getElementById('moveExerciseForm').addEventListener('submit', moveExercise);
-  document.getElementById('historyBackupBtn').addEventListener('click', exportBackup);
-
-  renderHistory();
-}
-
-function renderHistory() {
-  const data = load();
-  const list = document.getElementById('historyList');
-  if (!data || !list) return;
-
-  const workouts = [...(data.workouts || [])].sort((a, b) =>
-    String(b.date || '').localeCompare(String(a.date || ''))
-  );
-
-  document.getElementById('historyCount').textContent =
-    `${workouts.filter(w => (w.exercises || []).length).length} active day${workouts.filter(w => (w.exercises || []).length).length === 1 ? '' : 's'}`;
-
-  if (!workouts.length) {
-    list.innerHTML = `<div class="empty-state">No adventures recorded yet.</div>`;
-    return;
-  }
-
-  list.innerHTML = workouts.map(workout => {
-    const exercises = workout.exercises || [];
-    const totals = workoutTotals(workout);
-    const empty = exercises.length === 0;
-
-    return `
-      <article class="history-day ${empty ? 'history-empty' : ''}" data-history-id="${esc(workout.id)}">
-        <div class="history-day-head">
-          <div>
-            <span class="history-date">${esc(workout.date || 'Unknown date')} · ${esc(workout.day || dayName(workout.date))}</span>
-            <strong>${esc(workout.title || 'Untitled Adventure')}</strong>
-            <small>
-              ${exercises.length} move${exercises.length === 1 ? '' : 's'}
-              · ${totals.strengthSets} sets
-              · ${totals.cardio} cardio min
-              · ${totals.xp} XP
-            </small>
-          </div>
-          <span class="history-status">${empty ? 'EMPTY RECORD' : '✓ LOGGED'}</span>
-        </div>
-
-        <div class="history-date-editor">
-          <label>Workout date
-            <input type="date" value="${esc(workout.date || '')}" data-workout-date="${esc(workout.id)}">
-          </label>
-          <button type="button" class="ghost mini" data-change-workout-date="${esc(workout.id)}">Move Whole Day</button>
-          ${empty ? `<button type="button" class="ghost mini danger-ghost" data-delete-empty="${esc(workout.id)}">Remove Empty</button>` : ''}
-        </div>
-
-        <div class="history-exercises">
-          ${exercises.length ? exercises.map((e, index) => `
-            <div class="history-exercise">
-              <span class="history-exercise-icon">${esc(e.icon || (e.type === 'cardio' ? '🏃' : '⚔️'))}</span>
-              <div>
-                <strong>${esc(e.name || 'Exercise')}</strong>
-                <small>${exerciseSummary(e)} · +${Number(e.xp) || 0} XP</small>
-              </div>
-              <button
-                type="button"
-                class="history-move-btn"
-                data-move-exercise
-                data-workout-id="${esc(workout.id)}"
-                data-exercise-index="${index}"
-              >↪ Move</button>
-            </div>
-          `).join('') : `<div class="history-no-exercises">No exercises attached to this day.</div>`}
-        </div>
-      </article>
-    `;
-  }).join('');
-
-  document.querySelectorAll('[data-change-workout-date]').forEach(btn => {
-    btn.addEventListener('click', () => changeWorkoutDate(btn.dataset.changeWorkoutDate));
-  });
-
-  document.querySelectorAll('[data-move-exercise]').forEach(btn => {
-    btn.addEventListener('click', () =>
-      openMoveExercise(btn.dataset.workoutId, Number(btn.dataset.exerciseIndex))
-    );
-  });
-
-  document.querySelectorAll('[data-delete-empty]').forEach(btn => {
-    btn.addEventListener('click', () => deleteEmptyWorkout(btn.dataset.deleteEmpty));
-  });
-}
-
-function changeWorkoutDate(workoutId) {
-  const data = load();
-  const source = (data?.workouts || []).find(w => w.id === workoutId);
-  const input = document.querySelector(`[data-workout-date="${CSS.escape(workoutId)}"]`);
-  const targetDate = input?.value;
-
-  if (!source || !targetDate || targetDate === source.date) {
-    toast('📅 Choose a different date first.');
-    return;
-  }
-
-  const existing = (data.workouts || []).find(w => w.date === targetDate && w.id !== workoutId);
-
-  if (existing) {
-    existing.exercises ||= [];
-    existing.exercises.push(...(source.exercises || []));
-    existing.note = existing.note || source.note;
-    data.workouts = data.workouts.filter(w => w.id !== workoutId);
-    toast(`🗂️ Adventure merged into ${targetDate}.`);
-  } else {
-    source.date = targetDate;
-    source.day = dayName(targetDate);
-    toast(`📅 Adventure moved to ${targetDate}.`);
-  }
-
-  sortWorkouts(data);
-  save(data);
-  setTimeout(() => location.reload(), 350);
-}
-
-function openMoveExercise(workoutId, exerciseIndex) {
-  const data = load();
-  const workout = (data?.workouts || []).find(w => w.id === workoutId);
-  const exercise = workout?.exercises?.[exerciseIndex];
-  if (!workout || !exercise) return;
-
-  document.getElementById('moveSourceWorkoutId').value = workoutId;
-  document.getElementById('moveExerciseIndex').value = String(exerciseIndex);
-  document.getElementById('moveExerciseDate').value = workout.date || localDateISO();
-  document.getElementById('moveExerciseLabel').textContent =
-    `${exercise.name} · currently ${workout.date}`;
-  document.getElementById('moveExerciseDialog').showModal();
-}
-
-function moveExercise(ev) {
-  ev.preventDefault();
-
-  const data = load();
-  const workoutId = document.getElementById('moveSourceWorkoutId').value;
-  const exerciseIndex = Number(document.getElementById('moveExerciseIndex').value);
-  const targetDate = document.getElementById('moveExerciseDate').value;
-
-  const source = (data?.workouts || []).find(w => w.id === workoutId);
-  if (!source || !targetDate || !source.exercises?.[exerciseIndex]) return;
-
-  if (targetDate === source.date) {
-    toast('📅 That exercise is already on that date.');
-    return;
-  }
-
-  const [exercise] = source.exercises.splice(exerciseIndex, 1);
-  const target = ensureTargetWorkout(data, targetDate);
-  target.exercises ||= [];
-  target.exercises.push({
-    ...exercise,
-    movedFromDate: source.date,
-    movedAt: new Date().toISOString()
-  });
-
-  sortWorkouts(data);
-  save(data);
-  document.getElementById('moveExerciseDialog').close();
-  toast(`↪ ${exercise.name} moved to ${targetDate}.`);
-  setTimeout(() => location.reload(), 350);
-}
-
-function deleteEmptyWorkout(workoutId) {
-  const data = load();
-  const workout = (data?.workouts || []).find(w => w.id === workoutId);
-  if (!workout || (workout.exercises || []).length) return;
-
-  data.workouts = data.workouts.filter(w => w.id !== workoutId);
-  save(data);
-  toast('🧹 Empty adventure record removed.');
-  setTimeout(() => location.reload(), 350);
-}
-
-function exportBackup() {
-  const raw = localStorage.getItem(SAVE_KEY);
-  if (!raw) {
-    toast('No FitQuest save found to back up.');
-    return;
-  }
-
-  const blob = new Blob([raw], { type: 'application/json' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `fitquest-backup-${localDateISO()}.json`;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
-  toast('⬇ FitQuest save backup exported.');
-}
-
-if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', installUI, { once: true });
-} else {
-  installUI();
-}
+if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',installUI,{once:true});else installUI();
