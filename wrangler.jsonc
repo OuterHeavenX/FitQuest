@@ -1,6 +1,11 @@
 {
   "name": "fitquest",
   "compatibility_date": "2026-08-02",
+
+  "assets": {
+    "directory": "./dist"
+  },
+
   "d1_databases": [
     {
       "binding": "DB",
