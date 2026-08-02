@@ -72,13 +72,14 @@ function constantTimeEqual(a, b) {
 
 function parseCookies(request) {
   const cookieHeader = request.headers.get('Cookie') || '';
-
   const cookies = {};
 
   for (const part of cookieHeader.split(';')) {
     const index = part.indexOf('=');
 
-    if (index === -1) continue;
+    if (index === -1) {
+      continue;
+    }
 
     const name = part.slice(0, index).trim();
     const value = part.slice(index + 1).trim();
@@ -131,29 +132,28 @@ function sqliteDateTime(date) {
 async function hashPassword(password) {
   const encoder = new TextEncoder();
 
-  const salt =
-    crypto.getRandomValues(new Uint8Array(16));
+  const salt = crypto.getRandomValues(
+    new Uint8Array(16)
+  );
 
-  const keyMaterial =
-    await crypto.subtle.importKey(
-      'raw',
-      encoder.encode(password),
-      'PBKDF2',
-      false,
-      ['deriveBits']
-    );
+  const keyMaterial = await crypto.subtle.importKey(
+    'raw',
+    encoder.encode(password),
+    'PBKDF2',
+    false,
+    ['deriveBits']
+  );
 
-  const bits =
-    await crypto.subtle.deriveBits(
-      {
-        name: 'PBKDF2',
-        hash: 'SHA-256',
-        salt,
-        iterations: PBKDF2_ITERATIONS
-      },
-      keyMaterial,
-      256
-    );
+  const bits = await crypto.subtle.deriveBits(
+    {
+      name: 'PBKDF2',
+      hash: 'SHA-256',
+      salt,
+      iterations: PBKDF2_ITERATIONS
+    },
+    keyMaterial,
+    256
+  );
 
   const hash = new Uint8Array(bits);
 
@@ -181,11 +181,9 @@ async function verifyPassword(password, storedHash) {
       hashBase64
     ] = parts;
 
-
     if (algorithm !== 'pbkdf2-sha256') {
       return false;
     }
-
 
     const iterations = Number(iterationText);
 
@@ -197,44 +195,31 @@ async function verifyPassword(password, storedHash) {
       return false;
     }
 
+    const salt = base64ToBytes(saltBase64);
+    const expectedHash = base64ToBytes(hashBase64);
 
-    const salt =
-      base64ToBytes(saltBase64);
+    const encoder = new TextEncoder();
 
-    const expectedHash =
-      base64ToBytes(hashBase64);
+    const keyMaterial = await crypto.subtle.importKey(
+      'raw',
+      encoder.encode(password),
+      'PBKDF2',
+      false,
+      ['deriveBits']
+    );
 
+    const bits = await crypto.subtle.deriveBits(
+      {
+        name: 'PBKDF2',
+        hash: 'SHA-256',
+        salt,
+        iterations
+      },
+      keyMaterial,
+      expectedHash.length * 8
+    );
 
-    const encoder =
-      new TextEncoder();
-
-
-    const keyMaterial =
-      await crypto.subtle.importKey(
-        'raw',
-        encoder.encode(password),
-        'PBKDF2',
-        false,
-        ['deriveBits']
-      );
-
-
-    const bits =
-      await crypto.subtle.deriveBits(
-        {
-          name: 'PBKDF2',
-          hash: 'SHA-256',
-          salt,
-          iterations
-        },
-        keyMaterial,
-        expectedHash.length * 8
-      );
-
-
-    const actualHash =
-      new Uint8Array(bits);
-
+    const actualHash = new Uint8Array(bits);
 
     return constantTimeEqual(
       actualHash,
@@ -252,14 +237,12 @@ async function verifyPassword(password, storedHash) {
 // ---------------------------------------------------------
 
 async function hashSessionToken(token) {
-  const bytes =
-    new TextEncoder().encode(token);
+  const bytes = new TextEncoder().encode(token);
 
-  const digest =
-    await crypto.subtle.digest(
-      'SHA-256',
-      bytes
-    );
+  const digest = await crypto.subtle.digest(
+    'SHA-256',
+    bytes
+  );
 
   return bytesToHex(
     new Uint8Array(digest)
@@ -268,37 +251,42 @@ async function hashSessionToken(token) {
 
 
 async function createSession(env, userId) {
-  const randomBytes =
-    crypto.getRandomValues(
-      new Uint8Array(32)
-    );
+  const randomBytes = crypto.getRandomValues(
+    new Uint8Array(32)
+  );
 
-  const rawToken =
-    bytesToBase64Url(randomBytes);
+  const rawToken = bytesToBase64Url(randomBytes);
 
-  const tokenHash =
-    await hashSessionToken(rawToken);
+  const tokenHash = await hashSessionToken(
+    rawToken
+  );
 
+  const expires = new Date(
+    Date.now() +
+    SESSION_DAYS *
+    24 *
+    60 *
+    60 *
+    1000
+  );
 
-  const expires =
-    new Date(
-      Date.now() +
-      SESSION_DAYS *
-      24 *
-      60 *
-      60 *
-      1000
-    );
-
-
-  const expiresAt =
-    sqliteDateTime(expires);
-
+  const expiresAt = sqliteDateTime(expires);
 
   await env.DB.prepare(
     `INSERT INTO sessions
-      (token, user_id, expires_at, created_at)
-     VALUES (?, ?, ?, CURRENT_TIMESTAMP)`
+      (
+        token,
+        user_id,
+        expires_at,
+        created_at
+      )
+     VALUES
+      (
+        ?,
+        ?,
+        ?,
+        CURRENT_TIMESTAMP
+      )`
   )
     .bind(
       tokenHash,
@@ -306,7 +294,6 @@ async function createSession(env, userId) {
       expiresAt
     )
     .run();
-
 
   return {
     rawToken,
@@ -316,44 +303,37 @@ async function createSession(env, userId) {
 
 
 async function getCurrentUser(request, env) {
-  const cookies =
-    parseCookies(request);
+  const cookies = parseCookies(request);
 
-  const rawToken =
-    cookies.fitquest_session;
-
+  const rawToken = cookies.fitquest_session;
 
   if (!rawToken) {
     return null;
   }
 
+  const tokenHash = await hashSessionToken(
+    rawToken
+  );
 
-  const tokenHash =
-    await hashSessionToken(rawToken);
-
-
-  const session =
-    await env.DB.prepare(
-      `SELECT
-         sessions.token,
-         sessions.user_id,
-         sessions.expires_at,
-         users.email
-       FROM sessions
-       JOIN users
-         ON users.id = sessions.user_id
-       WHERE sessions.token = ?
-         AND sessions.expires_at > CURRENT_TIMESTAMP
-       LIMIT 1`
-    )
-      .bind(tokenHash)
-      .first();
-
+  const session = await env.DB.prepare(
+    `SELECT
+       sessions.token,
+       sessions.user_id,
+       sessions.expires_at,
+       users.email
+     FROM sessions
+     JOIN users
+       ON users.id = sessions.user_id
+     WHERE sessions.token = ?
+       AND sessions.expires_at > CURRENT_TIMESTAMP
+     LIMIT 1`
+  )
+    .bind(tokenHash)
+    .first();
 
   if (!session) {
     return null;
   }
-
 
   return {
     id: session.user_id,
@@ -368,11 +348,8 @@ async function getCurrentUser(request, env) {
 // ---------------------------------------------------------
 
 export default {
-
   async fetch(request, env) {
-
-    const url =
-      new URL(request.url);
+    const url = new URL(request.url);
 
 
     // -----------------------------------------------------
@@ -383,31 +360,24 @@ export default {
       url.pathname === '/api/health' &&
       request.method === 'GET'
     ) {
-
       try {
-
-        const result =
-          await env.DB.prepare(
-            'SELECT 1 AS ok'
-          ).first();
-
+        const result = await env.DB.prepare(
+          'SELECT 1 AS ok'
+        ).first();
 
         return json({
           ok: true,
           database: result?.ok === 1
         });
 
-
       } catch (error) {
-
         return json(
           {
             ok: false,
-            error: error.message
+            error: error?.message || String(error)
           },
           500
         );
-
       }
     }
 
@@ -420,41 +390,31 @@ export default {
       url.pathname === '/api/auth/signup' &&
       request.method === 'POST'
     ) {
-
       try {
+        const body = await request.json();
 
-        const body =
-          await request.json();
+        const email = String(body.email || '')
+          .trim()
+          .toLowerCase();
 
-
-        const email =
-          String(body.email || '')
-            .trim()
-            .toLowerCase();
-
-
-        const password =
-          String(body.password || '');
-
+        const password = String(
+          body.password || ''
+        );
 
         if (
           !email ||
           !email.includes('@')
         ) {
-
           return json(
             {
               ok: false,
-              error:
-                'Enter a valid email address.'
+              error: 'Enter a valid email address.'
             },
             400
           );
         }
 
-
         if (password.length < 10) {
-
           return json(
             {
               ok: false,
@@ -465,19 +425,15 @@ export default {
           );
         }
 
-
-        const existing =
-          await env.DB.prepare(
-            `SELECT id
-             FROM users
-             WHERE email = ?`
-          )
-            .bind(email)
-            .first();
-
+        const existing = await env.DB.prepare(
+          `SELECT id
+           FROM users
+           WHERE email = ?`
+        )
+          .bind(email)
+          .first();
 
         if (existing) {
-
           return json(
             {
               ok: false,
@@ -488,14 +444,11 @@ export default {
           );
         }
 
+        const id = crypto.randomUUID();
 
-        const id =
-          crypto.randomUUID();
-
-
-        const passwordHash =
-          await hashPassword(password);
-
+        const passwordHash = await hashPassword(
+          password
+        );
 
         await env.DB.prepare(
           `INSERT INTO users
@@ -520,18 +473,14 @@ export default {
           )
           .run();
 
-
-        const session =
-          await createSession(
-            env,
-            id
-          );
-
+        const session = await createSession(
+          env,
+          id
+        );
 
         return json(
           {
             ok: true,
-
             user: {
               id,
               email
@@ -546,18 +495,22 @@ export default {
           }
         );
 
-
       } catch (error) {
-  console.error('Signup error:', error);
+        console.error(
+          'Signup error:',
+          error
+        );
 
-  return json(
-    {
-      ok: false,
-      error: error?.message || String(error)
-    },
-    500
-  );
-}
+        return json(
+          {
+            ok: false,
+            error:
+              error?.message || String(error)
+          },
+          500
+        );
+      }
+    }
 
 
     // -----------------------------------------------------
@@ -568,28 +521,21 @@ export default {
       url.pathname === '/api/auth/login' &&
       request.method === 'POST'
     ) {
-
       try {
+        const body = await request.json();
 
-        const body =
-          await request.json();
+        const email = String(body.email || '')
+          .trim()
+          .toLowerCase();
 
-
-        const email =
-          String(body.email || '')
-            .trim()
-            .toLowerCase();
-
-
-        const password =
-          String(body.password || '');
-
+        const password = String(
+          body.password || ''
+        );
 
         if (
           !email ||
           !password
         ) {
-
           return json(
             {
               ok: false,
@@ -600,23 +546,19 @@ export default {
           );
         }
 
-
-        const user =
-          await env.DB.prepare(
-            `SELECT
-               id,
-               email,
-               password_hash
-             FROM users
-             WHERE email = ?
-             LIMIT 1`
-          )
-            .bind(email)
-            .first();
-
+        const user = await env.DB.prepare(
+          `SELECT
+             id,
+             email,
+             password_hash
+           FROM users
+           WHERE email = ?
+           LIMIT 1`
+        )
+          .bind(email)
+          .first();
 
         if (!user) {
-
           return json(
             {
               ok: false,
@@ -626,7 +568,6 @@ export default {
             401
           );
         }
-
 
         const passwordCorrect =
           await verifyPassword(
@@ -634,9 +575,7 @@ export default {
             user.password_hash
           );
 
-
         if (!passwordCorrect) {
-
           return json(
             {
               ok: false,
@@ -647,25 +586,19 @@ export default {
           );
         }
 
-
-        // Clean expired sessions occasionally.
         await env.DB.prepare(
           `DELETE FROM sessions
            WHERE expires_at <= CURRENT_TIMESTAMP`
         ).run();
 
-
-        const session =
-          await createSession(
-            env,
-            user.id
-          );
-
+        const session = await createSession(
+          env,
+          user.id
+        );
 
         return json(
           {
             ok: true,
-
             user: {
               id: user.id,
               email: user.email
@@ -680,24 +613,20 @@ export default {
           }
         );
 
-
       } catch (error) {
-
         console.error(
           'Login error:',
           error
         );
 
-
         return json(
           {
             ok: false,
             error:
-              'Unable to sign in.'
+              error?.message || String(error)
           },
           500
         );
-
       }
     }
 
@@ -710,18 +639,13 @@ export default {
       url.pathname === '/api/auth/me' &&
       request.method === 'GET'
     ) {
-
       try {
-
-        const user =
-          await getCurrentUser(
-            request,
-            env
-          );
-
+        const user = await getCurrentUser(
+          request,
+          env
+        );
 
         if (!user) {
-
           return json(
             {
               ok: false,
@@ -731,34 +655,30 @@ export default {
           );
         }
 
-
         return json({
           ok: true,
           authenticated: true,
-
           user: {
             id: user.id,
             email: user.email
           }
         });
 
-
       } catch (error) {
-
         console.error(
           'Session check error:',
           error
         );
 
-
         return json(
           {
             ok: false,
-            authenticated: false
+            authenticated: false,
+            error:
+              error?.message || String(error)
           },
           500
         );
-
       }
     }
 
@@ -771,24 +691,17 @@ export default {
       url.pathname === '/api/auth/logout' &&
       request.method === 'POST'
     ) {
-
       try {
-
-        const cookies =
-          parseCookies(request);
-
+        const cookies = parseCookies(request);
 
         const rawToken =
           cookies.fitquest_session;
 
-
         if (rawToken) {
-
           const tokenHash =
             await hashSessionToken(
               rawToken
             );
-
 
           await env.DB.prepare(
             `DELETE FROM sessions
@@ -797,7 +710,6 @@ export default {
             .bind(tokenHash)
             .run();
         }
-
 
         return json(
           {
@@ -810,24 +722,20 @@ export default {
           }
         );
 
-
       } catch (error) {
-
         console.error(
           'Logout error:',
           error
         );
 
-
         return json(
           {
             ok: false,
             error:
-              'Unable to sign out.'
+              error?.message || String(error)
           },
           500
         );
-
       }
     }
 
