@@ -8,6 +8,46 @@
   <title>FitQuest — Your Fitness RPG</title>
 </head>
 <body>
+  <div id="authGate" class="auth-gate">
+  <div class="auth-card">
+    <p class="eyebrow">FITQUEST ACCOUNT</p>
+    <h1>Begin Your Campaign</h1>
+    <p class="muted">
+      Create an account to save your FitQuest progress securely in the cloud.
+    </p>
+
+    <form id="signupForm">
+      <label>
+        Email
+        <input
+          id="signupEmail"
+          type="email"
+          autocomplete="email"
+          required
+          placeholder="you@example.com"
+        >
+      </label>
+
+      <label>
+        Password
+        <input
+          id="signupPassword"
+          type="password"
+          autocomplete="new-password"
+          minlength="10"
+          required
+          placeholder="At least 10 characters"
+        >
+      </label>
+
+      <button class="primary" type="submit">
+        Create Account
+      </button>
+
+      <p id="signupMessage" class="muted"></p>
+    </form>
+  </div>
+</div>
   <div class="ambient orb-one"></div><div class="ambient orb-two"></div>
   <div class="app-shell">
     <header class="topbar">
