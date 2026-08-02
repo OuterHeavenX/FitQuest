@@ -9,7 +9,38 @@ let state = loadSave(seedData);
 let titleTapCount = 0;
 const $ = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
-const todaysWorkout = () => state.workouts[state.workouts.length - 1];
+const todaysWorkout = () => {
+  const today = localDateISO();
+
+  let workout = state.workouts.find(w => w.date === today);
+
+  if (!workout) {
+    const local = new Date(`${today}T12:00:00`);
+    const day = new Intl.DateTimeFormat('en-US', {
+      weekday: 'long'
+    }).format(local);
+
+    const number = state.workouts.length + 1;
+
+    workout = {
+      id: `${today}-day-${number}-${Date.now()}`,
+      date: today,
+      day,
+      title: `Day ${number}: A New Quest`,
+      startTime: '',
+      startTimeExact: new Date().toLocaleTimeString([], {
+        hour: 'numeric',
+        minute: '2-digit'
+      }),
+      note: 'A new adventure begins.',
+      exercises: []
+    };
+
+    state.workouts.push(workout);
+  }
+
+  return workout;
+};
 const localDateISO = (d=new Date()) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 const escapeHtml = value => String(value ?? '').replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
 
@@ -140,11 +171,42 @@ function renderWeek(){
   $('#weekGrid').innerHTML = week.map(d=>`<div class="day ${activeDays.has(d)?'active':''}"><strong>${d}</strong>${activeDays.has(d)?'✓':'·'}</div>`).join('');
   const stats = calculateStats(state); $('#weeklySummary').textContent = `${stats.workouts} adventure${stats.workouts===1?'':'s'} logged · ${stats.strengthSets} strength sets · ${stats.cardio} cardio minutes.`;
 }
-function renderChronicle(){ $('#chronicle').innerHTML = [...state.workouts].reverse().map(w => `<div class="chronicle-entry"><time>${escapeHtml(w.date.toUpperCase())} · ${escapeHtml((w.day||'').toUpperCase())} · ${escapeHtml((w.startTimeExact || w.startTime || '').toUpperCase())}</time><strong>${escapeHtml(w.title)}</strong><p>${escapeHtml(w.note || 'Adventure completed.')} ${w.exercises?.length || 0} activities recorded.</p></div>`).join(''); }
-function renderQuests(){
-  const workout=todaysWorkout(); const strengthCount=workout.exercises.filter(e=>e.type==='strength').length; const cardio=workout.exercises.filter(e=>e.type==='cardio').reduce((n,e)=>n+(Number(e.duration)||0),0); const c=getCheckIn(workout.date);
-  const quests=[{label:'Warm the Engines',detail:'20 min cardio',done:cardio>=20,icon:'🏃'},{label:'Forge the Body',detail:'3 strength moves',done:strengthCount>=3,icon:'⚔️'},{label:'Record the Provisions',detail:'Log one food',done:(state.nutrition||[]).some(n=>n.date===workout.date),icon:'🍎'},{label:'Recovery Intel',detail:'Log sleep + water',done:(c?.sleepMinutes!=null || c?.sleepHours!=null) && Number(c?.waterOz)>0,icon:'📡'}];
-  $('#questList').innerHTML=quests.map(q=>`<div class="mini-quest ${q.done?'done':''}"><span>${q.done?'✓':q.icon}</span><div><strong>${q.label}</strong><small>${q.detail}</small></div></div>`).join(''); $('#questCount').textContent=`${quests.filter(q=>q.done).length}/${quests.length}`;
+function renderWeek(){
+  const labels = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+
+  const today = new Date();
+  today.setHours(12, 0, 0, 0);
+
+  const jsDay = today.getDay();
+  const daysSinceMonday = (jsDay + 6) % 7;
+
+  const monday = new Date(today);
+  monday.setDate(today.getDate() - daysSinceMonday);
+
+  const workoutDates = new Set(
+    state.workouts.map(w => w.date)
+  );
+
+  $('#weekGrid').innerHTML = labels.map((label, index) => {
+    const date = new Date(monday);
+    date.setDate(monday.getDate() + index);
+
+    const dateISO = localDateISO(date);
+    const active = workoutDates.has(dateISO);
+
+    return `
+      <div class="day ${active ? 'active' : ''}">
+        <strong>${label}</strong>
+        ${active ? '✓' : '·'}
+      </div>
+    `;
+  }).join('');
+
+  const stats = calculateStats(state);
+
+  $('#weeklySummary').textContent =
+    `${stats.workouts} adventure${stats.workouts===1?'':'s'} logged · ${stats.strengthSets} strength sets · ${stats.cardio} cardio minutes.`;
+}
 }
 function renderAchievements(summary){
   $('#achievementCount').textContent = `${summary.unlocked.length} / ${summary.total.toLocaleString()}`; const unlocked=summary.unlocked.slice(-3).reverse(); const upcoming=summary.archive.filter(a=>!a.unlocked&&a.kind!=='landmark'&&a.kind!=='secret').slice(0,2); const cards=[...unlocked,...upcoming].slice(0,5);
