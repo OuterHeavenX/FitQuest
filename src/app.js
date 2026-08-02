@@ -167,11 +167,6 @@ function renderNutrition(){
 }
 
 function renderWeek(){
-  const week = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun']; const activeDays = new Set(state.workouts.map(w => w.day?.slice(0,3)));
-  $('#weekGrid').innerHTML = week.map(d=>`<div class="day ${activeDays.has(d)?'active':''}"><strong>${d}</strong>${activeDays.has(d)?'✓':'·'}</div>`).join('');
-  const stats = calculateStats(state); $('#weeklySummary').textContent = `${stats.workouts} adventure${stats.workouts===1?'':'s'} logged · ${stats.strengthSets} strength sets · ${stats.cardio} cardio minutes.`;
-}
-function renderWeek(){
   const labels = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
 
   const today = new Date();
