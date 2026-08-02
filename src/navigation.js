@@ -298,15 +298,23 @@ function styles() {
       }
 
       .fitquest-mobile-actions {
-        display: flex;
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
         align-items: stretch;
         gap: 9px;
         margin-top: 3px;
       }
 
       .fitquest-mobile-action {
-        flex: 1;
-        min-height: 46px;
+        width: 100%;
+        height: 64px;
+        min-height: 64px;
+        margin: 0 !important;
+        padding: 0 14px !important;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        line-height: 1.15;
         border-radius: 14px;
         border: 1px solid rgba(255,255,255,.10);
         background: rgba(255,255,255,.045);
@@ -317,7 +325,7 @@ function styles() {
         cursor: pointer;
       }
 
-      .fitquest-mobile-action.primary {
+      .fitquest-mobile-action.is-primary {
         border-color: rgba(91, 213, 220, .24);
         background:
           linear-gradient(
@@ -493,7 +501,7 @@ function installMobileActions() {
     home.appendChild(
       mobileActionButton({
         label: '⚔️ New Adventure',
-        className: 'primary',
+        className: 'is-primary',
         onClick: () => $('#newWorkoutBtn')?.click()
       })
     );
@@ -510,7 +518,7 @@ function installMobileActions() {
     training.appendChild(
       mobileActionButton({
         label: '⚔️ New Adventure',
-        className: 'primary',
+        className: 'is-primary',
         onClick: () => $('#newWorkoutBtn')?.click()
       })
     );
@@ -527,7 +535,7 @@ function installMobileActions() {
     character.appendChild(
       mobileActionButton({
         label: '👤 Account & Security',
-        className: 'primary',
+        className: 'is-primary',
         onClick: () => $('#accountBtn')?.click()
       })
     );
