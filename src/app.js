@@ -1,38 +1,105 @@
 import './styles.css';
 import { seedData } from './data/defaultData.js';
-import { loadSave, writeSave, slugify, dedupeLibrary } from './lib/storage.js';
-import { calculateStats, nextExerciseXP, nutritionXP } from './lib/progression.js';
-import { quickFoods, findQuickFood, searchOpenFoodFacts } from './lib/nutrition.js';
-import { achievementSummary, sketchSVG } from './lib/achievements.js';
+import {
+  loadSave,
+  writeSave,
+  slugify,
+  dedupeLibrary
+} from './lib/storage.js';
+import {
+  calculateStats,
+  nextExerciseXP,
+  nutritionXP
+} from './lib/progression.js';
+import {
+  quickFoods,
+  findQuickFood,
+  searchOpenFoodFacts
+} from './lib/nutrition.js';
+import {
+  achievementSummary,
+  sketchSVG
+} from './lib/achievements.js';
 
-let state = await loadSave(seedData);
+let state = null;
 let titleTapCount = 0;
-const $ = s => document.querySelector(s);
-const $$ = s => [...document.querySelectorAll(s)];
-const todaysWorkout = () => {
+let appStarted = false;
+let cloudSaveTimer = null;
+
+const $ = selector =>
+  document.querySelector(selector);
+
+const $$ = selector =>
+  [...document.querySelectorAll(selector)];
+
+const localDateISO = (d = new Date()) =>
+  `${d.getFullYear()}-${String(
+    d.getMonth() + 1
+  ).padStart(2, '0')}-${String(
+    d.getDate()
+  ).padStart(2, '0')}`;
+
+const escapeHtml = value =>
+  String(value ?? '').replace(
+    /[&<>'"]/g,
+    c => ({
+      '&': '&amp;',
+      '<': '&lt;',
+      '>': '&gt;',
+      "'": '&#39;',
+      '"': '&quot;'
+    })[c]
+  );
+
+function scheduleCloudSave() {
+  if (!state) return;
+
+  clearTimeout(cloudSaveTimer);
+
+  cloudSaveTimer = setTimeout(() => {
+    void writeSave(state);
+  }, 750);
+}
+
+function todaysWorkout() {
   const today = localDateISO();
 
-  let workout = state.workouts.find(w => w.date === today);
+  let workout =
+    state.workouts.find(
+      w => w.date === today
+    );
 
   if (!workout) {
-    const local = new Date(`${today}T12:00:00`);
-    const day = new Intl.DateTimeFormat('en-US', {
-      weekday: 'long'
-    }).format(local);
+    const local =
+      new Date(`${today}T12:00:00`);
 
-    const number = state.workouts.length + 1;
+    const day =
+      new Intl.DateTimeFormat(
+        'en-US',
+        { weekday: 'long' }
+      ).format(local);
+
+    const number =
+      state.workouts.length + 1;
 
     workout = {
-      id: `${today}-day-${number}-${Date.now()}`,
+      id:
+        `${today}-day-${number}-${Date.now()}`,
       date: today,
       day,
-      title: `Day ${number}: A New Quest`,
+      title:
+        `Day ${number}: A New Quest`,
       startTime: '',
-      startTimeExact: new Date().toLocaleTimeString([], {
-        hour: 'numeric',
-        minute: '2-digit'
-      }),
-      note: 'A new adventure begins.',
+      startTimeExact:
+        new Date().toLocaleTimeString(
+          [],
+          {
+            hour: 'numeric',
+            minute: '2-digit'
+          }
+        ),
+      note:
+        'A new adventure begins.',
       exercises: []
     };
 
@@ -40,223 +107,2431 @@ const todaysWorkout = () => {
   }
 
   return workout;
-};
-const localDateISO = (d=new Date()) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
-const escapeHtml = value => String(value ?? '').replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
-
-function formatDate(dateString){
-  return new Intl.DateTimeFormat('en-US',{weekday:'long',month:'long',day:'numeric',year:'numeric'}).format(new Date(`${dateString}T12:00:00`));
 }
 
-function calculateAge(dob){
-  if(!dob) return null;
-  const birth = new Date(`${dob}T12:00:00`);
-  if(Number.isNaN(birth.getTime())) return null;
-  const now = new Date();
-  let age = now.getFullYear() - birth.getFullYear();
-  const beforeBirthday = now.getMonth() < birth.getMonth() || (now.getMonth() === birth.getMonth() && now.getDate() < birth.getDate());
-  if(beforeBirthday) age--;
-  return age >= 0 ? age : null;
+function formatDate(dateString) {
+  return new Intl.DateTimeFormat(
+    'en-US',
+    {
+      weekday: 'long',
+      month: 'long',
+      day: 'numeric',
+      year: 'numeric'
+    }
+  ).format(
+    new Date(
+      `${dateString}T12:00:00`
+    )
+  );
 }
 
-function parseHeight(text){
-  const raw = String(text || '').trim().toLowerCase().replace(/[’′]/g,"'").replace(/[“”″]/g,'"');
-  if(!raw) return null;
-  let m = raw.match(/^(\d+)\s*'\s*(\d{1,2}(?:\.\d+)?)\s*(?:"|in(?:ches?)?)?$/);
-  if(m){
-    const feet=Number(m[1]), inches=Number(m[2]);
-    if(feet<2 || feet>9 || inches<0 || inches>=12) return null;
-    const total=feet*12+inches;
-    return {heightDisplay:`${feet}'${Number.isInteger(inches)?inches:inches.toFixed(1)}\"`,heightInches:total,heightCm:+(total*2.54).toFixed(1)};
+function calculateAge(dob) {
+  if (!dob) return null;
+
+  const birth =
+    new Date(`${dob}T12:00:00`);
+
+  if (
+    Number.isNaN(
+      birth.getTime()
+    )
+  ) {
+    return null;
   }
-  m = raw.match(/^(\d+(?:\.\d+)?)\s*(?:in|inch|inches|\")$/);
-  if(m){ const total=Number(m[1]); if(total<36||total>108)return null; const feet=Math.floor(total/12), inches=+(total-feet*12).toFixed(1); return {heightDisplay:`${feet}'${inches}\"`,heightInches:total,heightCm:+(total*2.54).toFixed(1)}; }
-  m = raw.match(/^(\d+(?:\.\d+)?)\s*(?:cm|centimeters?|centimetres?)$/);
-  if(m){ const cm=Number(m[1]); if(cm<90||cm>275)return null; const total=cm/2.54, feet=Math.floor(total/12), inches=+(total-feet*12).toFixed(1); return {heightDisplay:`${feet}'${inches}\" (${cm} cm)`,heightInches:+total.toFixed(1),heightCm:cm}; }
+
+  const now = new Date();
+
+  let age =
+    now.getFullYear() -
+    birth.getFullYear();
+
+  const beforeBirthday =
+    now.getMonth() <
+      birth.getMonth() ||
+    (
+      now.getMonth() ===
+        birth.getMonth() &&
+      now.getDate() <
+        birth.getDate()
+    );
+
+  if (beforeBirthday) {
+    age--;
+  }
+
+  return age >= 0
+    ? age
+    : null;
+}
+
+function parseHeight(text) {
+  const raw =
+    String(text || '')
+      .trim()
+      .toLowerCase()
+      .replace(/[’′]/g, "'")
+      .replace(/[“”″]/g, '"');
+
+  if (!raw) {
+    return null;
+  }
+
+  let m =
+    raw.match(
+      /^(\d+)\s*'\s*(\d{1,2}(?:\.\d+)?)\s*(?:"|in(?:ches?)?)?$/
+    );
+
+  if (m) {
+    const feet =
+      Number(m[1]);
+
+    const inches =
+      Number(m[2]);
+
+    if (
+      feet < 2 ||
+      feet > 9 ||
+      inches < 0 ||
+      inches >= 12
+    ) {
+      return null;
+    }
+
+    const total =
+      feet * 12 + inches;
+
+    return {
+      heightDisplay:
+        `${feet}'${
+          Number.isInteger(inches)
+            ? inches
+            : inches.toFixed(1)
+        }"`,
+
+      heightInches:
+        total,
+
+      heightCm:
+        +(total * 2.54)
+          .toFixed(1)
+    };
+  }
+
+  m =
+    raw.match(
+      /^(\d+(?:\.\d+)?)\s*(?:in|inch|inches|")$/
+    );
+
+  if (m) {
+    const total =
+      Number(m[1]);
+
+    if (
+      total < 36 ||
+      total > 108
+    ) {
+      return null;
+    }
+
+    const feet =
+      Math.floor(
+        total / 12
+      );
+
+    const inches =
+      +(
+        total -
+        feet * 12
+      ).toFixed(1);
+
+    return {
+      heightDisplay:
+        `${feet}'${inches}"`,
+
+      heightInches:
+        total,
+
+      heightCm:
+        +(total * 2.54)
+          .toFixed(1)
+    };
+  }
+
+  m =
+    raw.match(
+      /^(\d+(?:\.\d+)?)\s*(?:cm|centimeters?|centimetres?)$/
+    );
+
+  if (m) {
+    const cm =
+      Number(m[1]);
+
+    if (
+      cm < 90 ||
+      cm > 275
+    ) {
+      return null;
+    }
+
+    const total =
+      cm / 2.54;
+
+    const feet =
+      Math.floor(
+        total / 12
+      );
+
+    const inches =
+      +(
+        total -
+        feet * 12
+      ).toFixed(1);
+
+    return {
+      heightDisplay:
+        `${feet}'${inches}" (${cm} cm)`,
+
+      heightInches:
+        +total.toFixed(1),
+
+      heightCm:
+        cm
+    };
+  }
+
   return null;
 }
 
-function getCheckIn(date=todaysWorkout().date){
+function getCheckIn(
+  date = todaysWorkout().date
+) {
   state.checkIns ||= [];
-  return state.checkIns.find(c => c.date === date) || null;
+
+  return (
+    state.checkIns.find(
+      c => c.date === date
+    ) || null
+  );
 }
 
-function upsertCheckIn(patch,date=todaysWorkout().date){
+function upsertCheckIn(
+  patch,
+  date = todaysWorkout().date
+) {
   state.checkIns ||= [];
-  let item=state.checkIns.find(c=>c.date===date);
-  if(!item){ item={id:`checkin-${date}-${Date.now()}`,date,weight:null,weightUnit:'lb',sleepHours:null,waterOz:0}; state.checkIns.push(item); }
-  Object.assign(item,patch);
+
+  let item =
+    state.checkIns.find(
+      c => c.date === date
+    );
+
+  if (!item) {
+    item = {
+      id:
+        `checkin-${date}-${Date.now()}`,
+      date,
+      weight: null,
+      weightUnit: 'lb',
+      sleepHours: null,
+      waterOz: 0
+    };
+
+    state.checkIns.push(item);
+  }
+
+  Object.assign(
+    item,
+    patch
+  );
+
   return item;
 }
 
-function render(){
-  state.exerciseLibrary = dedupeLibrary(state.exerciseLibrary || []);
-  state.ui ||= {stealthMode:false};
+function render() {
+  if (!state) return;
+
+  state.exerciseLibrary =
+    dedupeLibrary(
+      state.exerciseLibrary || []
+    );
+
+  state.ui ||= {
+    stealthMode: false
+  };
+
   state.checkIns ||= [];
-  const stats = calculateStats(state);
-  const workout = todaysWorkout();
-  const achievements = achievementSummary(state, stats);
-  state.profile.level = stats.level;
-  document.body.classList.toggle('stealth-mode', !!state.ui.stealthMode);
-  $('#levelValue').textContent = stats.level;
-  $('#heroTitle').textContent = workout.title;
-  $('#heroDate').textContent = `${formatDate(workout.date)} · ${workout.startTimeExact || workout.startTime || 'Adventure time'}`;
-  $('#xpText').textContent = `${stats.levelXp} / 500 XP`;
-  $('#xpBar').style.width = `${stats.levelXp/500*100}%`;
-  $('#streakStat').textContent = `${stats.streak} day${stats.streak===1?'':'s'}`;
-  $('#setsStat').textContent = stats.strengthSets;
-  $('#cardioStat').textContent = `${stats.cardio} min`;
-  $('#totalXpStat').textContent = stats.xp;
-  $('#rankTitle').textContent = stats.level >= 10 ? 'Mythic Adventurer' : stats.level >= 5 ? 'Veteran Adventurer' : stats.level >= 2 ? 'Rising Adventurer' : 'Novice Adventurer';
-  $('#opsStatus span:last-child').textContent = state.ui.stealthMode ? 'STEALTH INTERFACE · ACTIVE' : 'TACTICAL FITNESS ACTION';
 
-  renderWorkout(workout); renderLibrary(); renderProfile(); renderCheckIn(); renderNutrition(); renderWeek(); renderChronicle(); renderQuests(stats); renderAchievements(achievements);
-  writeSave(state);
+  const stats =
+    calculateStats(state);
+
+  const workout =
+    todaysWorkout();
+
+  const achievements =
+    achievementSummary(
+      state,
+      stats
+    );
+
+  state.profile.level =
+    stats.level;
+
+  document.body.classList.toggle(
+    'stealth-mode',
+    !!state.ui.stealthMode
+  );
+
+  $('#levelValue').textContent =
+    stats.level;
+
+  $('#heroTitle').textContent =
+    workout.title;
+
+  $('#heroDate').textContent =
+    `${formatDate(
+      workout.date
+    )} · ${
+      workout.startTimeExact ||
+      workout.startTime ||
+      'Adventure time'
+    }`;
+
+  $('#xpText').textContent =
+    `${stats.levelXp} / 500 XP`;
+
+  $('#xpBar').style.width =
+    `${stats.levelXp / 500 * 100}%`;
+
+  $('#streakStat').textContent =
+    `${stats.streak} day${
+      stats.streak === 1
+        ? ''
+        : 's'
+    }`;
+
+  $('#setsStat').textContent =
+    stats.strengthSets;
+
+  $('#cardioStat').textContent =
+    `${stats.cardio} min`;
+
+  $('#totalXpStat').textContent =
+    stats.xp;
+
+  $('#rankTitle').textContent =
+    stats.level >= 10
+      ? 'Mythic Adventurer'
+      : stats.level >= 5
+      ? 'Veteran Adventurer'
+      : stats.level >= 2
+      ? 'Rising Adventurer'
+      : 'Novice Adventurer';
+
+  $('#opsStatus span:last-child')
+    .textContent =
+      state.ui.stealthMode
+        ? 'STEALTH INTERFACE · ACTIVE'
+        : 'TACTICAL FITNESS ACTION';
+
+  renderWorkout(workout);
+  renderLibrary();
+  renderProfile();
+  renderCheckIn();
+  renderNutrition();
+  renderWeek();
+  renderChronicle();
+  renderQuests(stats);
+  renderAchievements(
+    achievements
+  );
+
+  scheduleCloudSave();
 }
 
-function renderWorkout(workout){
-  $('#workoutList').innerHTML = (workout.exercises || []).map((e,index) => {
-    const distance = e.type==='cardio' && Number(e.distance) ? ` · ${Number(e.distance).toFixed(Number(e.distance)%1?2:0)} ${e.distanceUnit || 'mi'}` : '';
-    return `<button class="workout-item interactive" data-edit-exercise="${index}"><div class="workout-icon">${escapeHtml(e.icon || '⚔️')}</div><div class="workout-copy"><strong>${escapeHtml(e.name)}</strong><small>${e.type==='cardio' ? `${e.duration} minutes${distance}` : `${e.sets} sets × ${e.reps} reps${e.weight ? ` · ${escapeHtml(e.weight)}` : ' · weight not recorded'}`}</small></div><span class="xp-tag">+${e.xp || 0} XP</span></button>`;
-  }).join('');
-  $$('[data-edit-exercise]').forEach(btn => btn.addEventListener('click', () => openExerciseDialog(workout.exercises[+btn.dataset.editExercise], +btn.dataset.editExercise)));
+function renderWorkout(workout) {
+  $('#workoutList').innerHTML =
+    (
+      workout.exercises || []
+    )
+      .map(
+        (e, index) => {
+          const distance =
+            e.type === 'cardio' &&
+            Number(e.distance)
+              ? ` · ${Number(
+                  e.distance
+                ).toFixed(
+                  Number(
+                    e.distance
+                  ) % 1
+                    ? 2
+                    : 0
+                )} ${
+                  e.distanceUnit ||
+                  'mi'
+                }`
+              : '';
+
+          return `
+            <button
+              class="workout-item interactive"
+              data-edit-exercise="${index}"
+            >
+              <div class="workout-icon">
+                ${escapeHtml(
+                  e.icon ||
+                  '⚔️'
+                )}
+              </div>
+
+              <div class="workout-copy">
+                <strong>
+                  ${escapeHtml(
+                    e.name
+                  )}
+                </strong>
+
+                <small>
+                  ${
+                    e.type ===
+                    'cardio'
+                      ? `${e.duration} minutes${distance}`
+                      : `${e.sets} sets × ${e.reps} reps${
+                          e.weight
+                            ? ` · ${escapeHtml(
+                                e.weight
+                              )}`
+                            : ' · weight not recorded'
+                        }`
+                  }
+                </small>
+              </div>
+
+              <span class="xp-tag">
+                +${e.xp || 0} XP
+              </span>
+            </button>
+          `;
+        }
+      )
+      .join('');
+
+  $$(
+    '[data-edit-exercise]'
+  ).forEach(btn =>
+    btn.addEventListener(
+      'click',
+      () =>
+        openExerciseDialog(
+          workout.exercises[
+            +btn.dataset
+              .editExercise
+          ],
+          +btn.dataset
+            .editExercise
+        )
+    )
+  );
 }
 
-function renderLibrary(){
-  $('#exerciseLibrary').innerHTML = state.exerciseLibrary.map((e) => `<button class="codex-tile" data-library-id="${escapeHtml(e.id)}"><span>${escapeHtml(e.icon || '⚔️')}</span><strong>${escapeHtml(e.name)}</strong><small>${e.type==='cardio'?'Cardio':'Strength'}</small></button>`).join('') + `<button class="codex-tile add-new" id="codexAddNew"><span>＋</span><strong>New Move</strong><small>Teach FitQuest</small></button>`;
-  $$('[data-library-id]').forEach(btn => btn.addEventListener('click', () => openExerciseDialog(state.exerciseLibrary.find(e => e.id === btn.dataset.libraryId))));
-  $('#codexAddNew')?.addEventListener('click', () => openExerciseDialog());
+function renderLibrary() {
+  $('#exerciseLibrary')
+    .innerHTML =
+      state.exerciseLibrary
+        .map(
+          e => `
+            <button
+              class="codex-tile"
+              data-library-id="${escapeHtml(
+                e.id
+              )}"
+            >
+              <span>
+                ${escapeHtml(
+                  e.icon ||
+                  '⚔️'
+                )}
+              </span>
+
+              <strong>
+                ${escapeHtml(
+                  e.name
+                )}
+              </strong>
+
+              <small>
+                ${
+                  e.type ===
+                  'cardio'
+                    ? 'Cardio'
+                    : 'Strength'
+                }
+              </small>
+            </button>
+          `
+        )
+        .join('') +
+      `
+        <button
+          class="codex-tile add-new"
+          id="codexAddNew"
+        >
+          <span>＋</span>
+          <strong>New Move</strong>
+          <small>Teach FitQuest</small>
+        </button>
+      `;
+
+  $$(
+    '[data-library-id]'
+  ).forEach(btn =>
+    btn.addEventListener(
+      'click',
+      () =>
+        openExerciseDialog(
+          state.exerciseLibrary
+            .find(
+              e =>
+                e.id ===
+                btn.dataset
+                  .libraryId
+            )
+        )
+    )
+  );
+
+  $('#codexAddNew')
+    ?.addEventListener(
+      'click',
+      () =>
+        openExerciseDialog()
+    );
 }
 
-function renderProfile(){
-  const p = state.profile;
-  const age = calculateAge(p.dateOfBirth);
-  $('#dobReadout').textContent = p.dateOfBirth ? new Intl.DateTimeFormat('en-US',{month:'short',day:'numeric',year:'numeric'}).format(new Date(`${p.dateOfBirth}T12:00:00`)) : 'Not set';
-  $('#ageReadout').textContent = age ?? (p.age ? `${p.age}*` : '—');
-  $('#heightReadout').textContent = p.heightDisplay || (p.height ? `${p.height} ${p.heightUnit||'in'}*` : 'Not set');
-  $('#profileDob').value = p.dateOfBirth || '';
-  $('#profileHeightText').value = p.heightDisplay || '';
-  $('#characterGoal').textContent = `Goal: ${p.goal || 'Slim & Tone'}`;
-  const complete = Boolean(p.dateOfBirth && p.heightDisplay);
-  $('#profileCompletion').textContent = complete ? 'Identity stats locked · age updates automatically' : (p.age || p.height ? 'Legacy stats detected · set DOB and height once to upgrade your dossier' : 'Set DOB and height once; daily measurements live below');
+function renderProfile() {
+  const p =
+    state.profile;
+
+  const age =
+    calculateAge(
+      p.dateOfBirth
+    );
+
+  $('#dobReadout').textContent =
+    p.dateOfBirth
+      ? new Intl.DateTimeFormat(
+          'en-US',
+          {
+            month: 'short',
+            day: 'numeric',
+            year: 'numeric'
+          }
+        ).format(
+          new Date(
+            `${p.dateOfBirth}T12:00:00`
+          )
+        )
+      : 'Not set';
+
+  $('#ageReadout').textContent =
+    age ??
+    (
+      p.age
+        ? `${p.age}*`
+        : '—'
+    );
+
+  $('#heightReadout')
+    .textContent =
+      p.heightDisplay ||
+      (
+        p.height
+          ? `${p.height} ${
+              p.heightUnit ||
+              'in'
+            }*`
+          : 'Not set'
+      );
+
+  $('#profileDob').value =
+    p.dateOfBirth || '';
+
+  $('#profileHeightText')
+    .value =
+      p.heightDisplay || '';
+
+  $('#characterGoal')
+    .textContent =
+      `Goal: ${
+        p.goal ||
+        'Slim & Tone'
+      }`;
+
+  const complete =
+    Boolean(
+      p.dateOfBirth &&
+      p.heightDisplay
+    );
+
+  $('#profileCompletion')
+    .textContent =
+      complete
+        ? 'Identity stats locked · age updates automatically'
+        : (
+            p.age ||
+            p.height
+          )
+        ? 'Legacy stats detected · set DOB and height once to upgrade your dossier'
+        : 'Set DOB and height once; daily measurements live below';
 }
 
-function renderCheckIn(){
-  const date=todaysWorkout().date;
-  const c=getCheckIn(date);
-  $('#checkInDateLabel').textContent = formatDate(date).replace(/, \d{4}$/,'');
-  $('#dailyWeight').value = c?.weight ?? '';
-  $('#dailyWeightUnit').value = c?.weightUnit || 'lb';
-  const sleepTotal = c?.sleepMinutes != null ? Number(c.sleepMinutes) : (c?.sleepHours != null ? Math.round(Number(c.sleepHours) * 60) : null);
-  $('#dailySleepHours').value = sleepTotal == null ? '' : Math.floor(sleepTotal / 60);
-  $('#dailySleepMinutes').value = sleepTotal == null ? '' : sleepTotal % 60;
-  $('#dailyWater').value = c?.waterOz ?? 0;
-  const bits=[];
-  if(c?.weight) bits.push(`⚖️ ${c.weight} ${c.weightUnit}`);
-  if(sleepTotal!=null){ const sh=Math.floor(sleepTotal/60), sm=sleepTotal%60; bits.push(`😴 ${sh}h${sm?` ${sm}m`:''} sleep`); }
-  bits.push(`💧 ${Number(c?.waterOz||0)} oz water`);
-  $('#checkInSummary').innerHTML = bits.map(x=>`<span>${escapeHtml(x)}</span>`).join('');
+function renderCheckIn() {
+  const date =
+    todaysWorkout().date;
+
+  const c =
+    getCheckIn(date);
+
+  $('#checkInDateLabel')
+    .textContent =
+      formatDate(date)
+        .replace(
+          /, \d{4}$/,
+          ''
+        );
+
+  $('#dailyWeight').value =
+    c?.weight ?? '';
+
+  $('#dailyWeightUnit')
+    .value =
+      c?.weightUnit ||
+      'lb';
+
+  const sleepTotal =
+    c?.sleepMinutes != null
+      ? Number(
+          c.sleepMinutes
+        )
+      : c?.sleepHours != null
+      ? Math.round(
+          Number(
+            c.sleepHours
+          ) * 60
+        )
+      : null;
+
+  $('#dailySleepHours')
+    .value =
+      sleepTotal == null
+        ? ''
+        : Math.floor(
+            sleepTotal / 60
+          );
+
+  $('#dailySleepMinutes')
+    .value =
+      sleepTotal == null
+        ? ''
+        : sleepTotal % 60;
+
+  $('#dailyWater').value =
+    c?.waterOz ?? 0;
+
+  const bits = [];
+
+  if (c?.weight) {
+    bits.push(
+      `⚖️ ${c.weight} ${c.weightUnit}`
+    );
+  }
+
+  if (
+    sleepTotal != null
+  ) {
+    const sh =
+      Math.floor(
+        sleepTotal / 60
+      );
+
+    const sm =
+      sleepTotal % 60;
+
+    bits.push(
+      `😴 ${sh}h${
+        sm
+          ? ` ${sm}m`
+          : ''
+      } sleep`
+    );
+  }
+
+  bits.push(
+    `💧 ${Number(
+      c?.waterOz || 0
+    )} oz water`
+  );
+
+  $('#checkInSummary')
+    .innerHTML =
+      bits
+        .map(
+          x =>
+            `<span>${escapeHtml(
+              x
+            )}</span>`
+        )
+        .join('');
 }
 
-function renderNutrition(){
-  const workoutDate = todaysWorkout().date;
-  const entries = (state.nutrition || []).filter(n => n.date === workoutDate);
-  const totals = entries.reduce((acc,e) => { ['calories','protein','carbs','fat'].forEach(k => acc[k] += Number(e[k]) || 0); return acc; }, {calories:0,protein:0,carbs:0,fat:0});
-  $('#calorieTotal').textContent = Math.round(totals.calories); $('#proteinTotal').textContent = `${Math.round(totals.protein)}g`; $('#carbTotal').textContent = `${Math.round(totals.carbs)}g`; $('#fatTotal').textContent = `${Math.round(totals.fat)}g`;
-  $('#foodLog').innerHTML = entries.length ? entries.map(e => `<div class="food-row"><span>${escapeHtml(e.icon || '🍽️')}</span><div><strong>${escapeHtml(e.name)}</strong><small>${escapeHtml(e.serving || '1 serving')} · ${Math.round(Number(e.calories)||0)} cal${e.source?` · ${escapeHtml(e.source)}`:''}${Number(e.hydrationOz)?` · 💧 ${Number(e.hydrationOz)} oz`:''}</small></div><b>${Math.round(Number(e.protein)||0)}g P</b></div>`).join('') : '<div class="empty-state">No provisions logged yet. Add your first meal when you’re ready.</div>';
+function renderNutrition() {
+  const workoutDate =
+    todaysWorkout().date;
+
+  const entries =
+    (
+      state.nutrition ||
+      []
+    ).filter(
+      n =>
+        n.date ===
+        workoutDate
+    );
+
+  const totals =
+    entries.reduce(
+      (acc, e) => {
+        [
+          'calories',
+          'protein',
+          'carbs',
+          'fat'
+        ].forEach(
+          key =>
+            acc[key] +=
+              Number(
+                e[key]
+              ) || 0
+        );
+
+        return acc;
+      },
+      {
+        calories: 0,
+        protein: 0,
+        carbs: 0,
+        fat: 0
+      }
+    );
+
+  $('#calorieTotal')
+    .textContent =
+      Math.round(
+        totals.calories
+      );
+
+  $('#proteinTotal')
+    .textContent =
+      `${Math.round(
+        totals.protein
+      )}g`;
+
+  $('#carbTotal')
+    .textContent =
+      `${Math.round(
+        totals.carbs
+      )}g`;
+
+  $('#fatTotal')
+    .textContent =
+      `${Math.round(
+        totals.fat
+      )}g`;
+
+  $('#foodLog').innerHTML =
+    entries.length
+      ? entries
+          .map(
+            e => `
+              <div class="food-row">
+                <span>
+                  ${escapeHtml(
+                    e.icon ||
+                    '🍽️'
+                  )}
+                </span>
+
+                <div>
+                  <strong>
+                    ${escapeHtml(
+                      e.name
+                    )}
+                  </strong>
+
+                  <small>
+                    ${escapeHtml(
+                      e.serving ||
+                      '1 serving'
+                    )}
+                    · ${Math.round(
+                      Number(
+                        e.calories
+                      ) || 0
+                    )} cal
+                    ${
+                      e.source
+                        ? ` · ${escapeHtml(
+                            e.source
+                          )}`
+                        : ''
+                    }
+                    ${
+                      Number(
+                        e.hydrationOz
+                      )
+                        ? ` · 💧 ${Number(
+                            e.hydrationOz
+                          )} oz`
+                        : ''
+                    }
+                  </small>
+                </div>
+
+                <b>
+                  ${Math.round(
+                    Number(
+                      e.protein
+                    ) || 0
+                  )}g P
+                </b>
+              </div>
+            `
+          )
+          .join('')
+      : `
+          <div class="empty-state">
+            No provisions logged yet.
+            Add your first meal when you’re ready.
+          </div>
+        `;
 }
 
-function renderWeek(){
-  const labels = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+function renderWeek() {
+  const labels = [
+    'Mon',
+    'Tue',
+    'Wed',
+    'Thu',
+    'Fri',
+    'Sat',
+    'Sun'
+  ];
 
-  const today = new Date();
-  today.setHours(12, 0, 0, 0);
+  const today =
+    new Date();
 
-  const jsDay = today.getDay();
-  const daysSinceMonday = (jsDay + 6) % 7;
+  today.setHours(
+    12,
+    0,
+    0,
+    0
+  );
 
-  const monday = new Date(today);
-  monday.setDate(today.getDate() - daysSinceMonday);
+  const jsDay =
+    today.getDay();
 
-  const workoutDates = new Set(
-  state.workouts
-    .filter(w => Array.isArray(w.exercises) && w.exercises.length > 0)
-    .map(w => w.date)
-);
+  const daysSinceMonday =
+    (jsDay + 6) % 7;
 
-  $('#weekGrid').innerHTML = labels.map((label, index) => {
-    const date = new Date(monday);
-    date.setDate(monday.getDate() + index);
+  const monday =
+    new Date(today);
 
-    const dateISO = localDateISO(date);
-    const active = workoutDates.has(dateISO);
+  monday.setDate(
+    today.getDate() -
+    daysSinceMonday
+  );
 
-    return `
-      <div class="day ${active ? 'active' : ''}">
-        <strong>${label}</strong>
-        ${active ? '✓' : '·'}
-      </div>
-    `;
-  }).join('');
+  const workoutDates =
+    new Set(
+      state.workouts
+        .filter(
+          w =>
+            Array.isArray(
+              w.exercises
+            ) &&
+            w.exercises
+              .length > 0
+        )
+        .map(
+          w => w.date
+        )
+    );
 
-  const stats = calculateStats(state);
+  $('#weekGrid')
+    .innerHTML =
+      labels
+        .map(
+          (
+            label,
+            index
+          ) => {
+            const date =
+              new Date(
+                monday
+              );
 
-  $('#weeklySummary').textContent =
-    `${stats.workouts} adventure${stats.workouts===1?'':'s'} logged · ${stats.strengthSets} strength sets · ${stats.cardio} cardio minutes.`;
-  
+            date.setDate(
+              monday.getDate() +
+              index
+            );
+
+            const dateISO =
+              localDateISO(
+                date
+              );
+
+            const active =
+              workoutDates.has(
+                dateISO
+              );
+
+            return `
+              <div
+                class="day ${
+                  active
+                    ? 'active'
+                    : ''
+                }"
+              >
+                <strong>
+                  ${label}
+                </strong>
+
+                ${
+                  active
+                    ? '✓'
+                    : '·'
+                }
+              </div>
+            `;
+          }
+        )
+        .join('');
+
+  const stats =
+    calculateStats(state);
+
+  $('#weeklySummary')
+    .textContent =
+      `${stats.workouts} adventure${
+        stats.workouts === 1
+          ? ''
+          : 's'
+      } logged · ${
+        stats.strengthSets
+      } strength sets · ${
+        stats.cardio
+      } cardio minutes.`;
 }
 
-function renderAchievements(summary){
-  $('#achievementCount').textContent = `${summary.unlocked.length} / ${summary.total.toLocaleString()}`; const unlocked=summary.unlocked.slice(-3).reverse(); const upcoming=summary.archive.filter(a=>!a.unlocked&&a.kind!=='landmark'&&a.kind!=='secret').slice(0,2); const cards=[...unlocked,...upcoming].slice(0,5);
-  $('#achievementPreview').innerHTML=cards.map(a=>`<div class="achievement ${a.unlocked?'unlocked':'locked'}"><span>${a.unlocked?a.icon:'🔒'}</span><div><strong>${escapeHtml(a.name)}</strong><small>${a.unlocked?(a.flavor||'Achievement unlocked'):`Target: ${a.target.toLocaleString()}`}</small></div></div>`).join('');
-  $('#distanceTotal').textContent=`${summary.distance.toFixed(2)} mi`; const next=summary.nextLandmark; $('#nextLandmarkName').textContent=next.unlocked?'Atlas Campaign Complete':next.name; $('#nextLandmarkProgress').textContent=next.unlocked?'Legendary distance achieved.':`${next.remaining.toFixed(2)} mi remaining · ${next.place}`; const prevIndex=summary.landmarks.findIndex(l=>l.id===next.id)-1; const prevMiles=prevIndex>=0?summary.landmarks[prevIndex].miles:0; const pct=next.unlocked?100:Math.max(0,Math.min(100,((summary.distance-prevMiles)/(next.miles-prevMiles))*100)); $('#landmarkBar').style.width=`${pct}%`; const unlockedLandmarks=summary.landmarks.filter(l=>l.unlocked); const visible=[...unlockedLandmarks.slice(-3),...summary.landmarks.filter(l=>!l.unlocked).slice(0,4)]; $('#landmarkGrid').innerHTML=visible.map(l=>`<article class="landmark ${l.unlocked?'unlocked':'locked'}"><div class="sketch">${sketchSVG(l.sketch)}</div><div class="landmark-copy"><span>${l.unlocked?'FIELD STAMPED':'DISTANCE TARGET'}</span><strong>${escapeHtml(l.name)}</strong><small>${escapeHtml(l.place)} · ${l.miles.toLocaleString()} mi</small><p>${l.unlocked?escapeHtml(l.flavor):`${l.remaining.toFixed(2)} mi to unlock`}</p></div></article>`).join('');
+function renderChronicle() {
+  const workouts =
+    [...(
+      state.workouts ||
+      []
+    )]
+      .filter(
+        w =>
+          (
+            w.exercises ||
+            []
+          ).length
+      )
+      .sort(
+        (a, b) =>
+          String(
+            b.date || ''
+          ).localeCompare(
+            String(
+              a.date || ''
+            )
+          )
+      )
+      .slice(0, 8);
+
+  $('#chronicle')
+    .innerHTML =
+      workouts.length
+        ? workouts
+            .map(
+              workout => {
+                const exercises =
+                  workout
+                    .exercises ||
+                  [];
+
+                const xp =
+                  exercises
+                    .reduce(
+                      (
+                        total,
+                        exercise
+                      ) =>
+                        total +
+                        (
+                          Number(
+                            exercise.xp
+                          ) ||
+                          0
+                        ),
+                      0
+                    );
+
+                return `
+                  <div class="chronicle-entry">
+                    <span>
+                      ${escapeHtml(
+                        workout.day ||
+                        ''
+                      )}
+                    </span>
+
+                    <div>
+                      <strong>
+                        ${escapeHtml(
+                          workout.title ||
+                          'Adventure'
+                        )}
+                      </strong>
+
+                      <small>
+                        ${escapeHtml(
+                          formatDate(
+                            workout.date
+                          )
+                        )}
+                        · ${
+                          exercises.length
+                        } move${
+                          exercises.length ===
+                          1
+                            ? ''
+                            : 's'
+                        }
+                        · ${xp} XP
+                      </small>
+                    </div>
+                  </div>
+                `;
+              }
+            )
+            .join('')
+        : `
+            <div class="empty-state">
+              Your campaign story will appear here.
+            </div>
+          `;
 }
 
-function openExerciseDialog(exercise=null, editIndex=null){
-  const isLoggedExercise=editIndex!==null; $('#exerciseDialogTitle').textContent=isLoggedExercise?'Edit Exercise':exercise?`Log ${exercise.name}`:'Teach FitQuest a Move'; $('#exerciseEditIndex').value=editIndex??''; $('#exerciseName').value=exercise?.name||''; $('#exerciseType').value=exercise?.type||'strength'; $('#exerciseIcon').value=exercise?.icon||(exercise?.type==='cardio'?'🏃':'⚔️'); $('#exerciseSets').value=exercise?.sets||3; $('#exerciseReps').value=exercise?.reps||10; $('#exerciseWeight').value=exercise?.weight||''; $('#exerciseDuration').value=exercise?.duration||20; $('#exerciseDistance').value=exercise?.distance??''; $('#exerciseDistanceUnit').value=exercise?.distanceUnit||'mi'; updateExerciseFields(); $('#exerciseDialog').showModal();
-}
-function updateExerciseFields(){ const cardio=$('#exerciseType').value==='cardio'; $('#strengthFields').hidden=cardio; $('#cardioFields').hidden=!cardio; }
-function saveExercise(ev){
-  ev.preventDefault(); const name=$('#exerciseName').value.trim(); if(!name)return; const type=$('#exerciseType').value; const icon=$('#exerciseIcon').value.trim()||(type==='cardio'?'🏃':'⚔️'); const duration=+$('#exerciseDuration').value||1; const distance=+$('#exerciseDistance').value||0; const entry=type==='cardio'?{type,name,duration,distance:distance||null,distanceUnit:$('#exerciseDistanceUnit').value,icon,xp:nextExerciseXP(type,0,duration,distance)}:{type,name,sets:+$('#exerciseSets').value||1,reps:+$('#exerciseReps').value||1,weight:$('#exerciseWeight').value.trim()||null,icon,xp:nextExerciseXP(type,+$('#exerciseSets').value)}; const editIndex=$('#exerciseEditIndex').value; if(editIndex!=='')todaysWorkout().exercises[+editIndex]=entry; else todaysWorkout().exercises.push(entry); const existing=state.exerciseLibrary.find(e=>e.name.toLowerCase()===name.toLowerCase()); if(!existing){state.exerciseLibrary.push({id:slugify(name),name,type,icon});toast(`📖 ${name} learned by the Exercise Codex!`);} else {existing.type=type;existing.icon=icon;toast(`⚔️ ${name} logged!`);} $('#exerciseDialog').close(); render();
+function renderQuests(stats) {
+  const workout =
+    todaysWorkout();
+
+  const exerciseCount =
+    (
+      workout.exercises ||
+      []
+    ).length;
+
+  const checkIn =
+    getCheckIn(
+      workout.date
+    );
+
+  const nutritionCount =
+    (
+      state.nutrition ||
+      []
+    ).filter(
+      item =>
+        item.date ===
+        workout.date
+    ).length;
+
+  const quests = [
+    {
+      name:
+        'Complete one training move',
+      complete:
+        exerciseCount > 0
+    },
+    {
+      name:
+        'Log your daily recovery intel',
+      complete:
+        Boolean(
+          checkIn &&
+          (
+            checkIn.weight ||
+            checkIn.sleepMinutes != null ||
+            checkIn.waterOz
+          )
+        )
+    },
+    {
+      name:
+        'Log today’s provisions',
+      complete:
+        nutritionCount > 0
+    }
+  ];
+
+  const complete =
+    quests.filter(
+      quest =>
+        quest.complete
+    ).length;
+
+  $('#questCount')
+    .textContent =
+      `${complete}/${quests.length}`;
+
+  $('#questList')
+    .innerHTML =
+      quests
+        .map(
+          quest => `
+            <div class="quest-item ${
+              quest.complete
+                ? 'complete'
+                : ''
+            }">
+              <span>
+                ${
+                  quest.complete
+                    ? '✓'
+                    : '○'
+                }
+              </span>
+
+              <strong>
+                ${escapeHtml(
+                  quest.name
+                )}
+              </strong>
+            </div>
+          `
+        )
+        .join('');
 }
 
-function fillFood(food){
-  $('#foodName').value=food?.name||''; $('#foodServing').value=food?.serving||'1 serving'; $('#foodCalories').value=Number.isFinite(Number(food?.calories))?Number(food.calories).toFixed(0):''; $('#foodProtein').value=food?.protein??''; $('#foodCarbs').value=food?.carbs??''; $('#foodFat').value=food?.fat??''; $('#foodHydration').value=food?.hydrationOz??''; $('#foodIcon').value=food?.icon||'🍽️'; $('#foodSource').value=food?.source||'';
-}
-function openFoodDialog(food=null){ fillFood(food||{}); $('#onlineFoodResults').hidden=true; $('#onlineFoodResults').innerHTML=''; $('#foodDialog').showModal(); }
-function saveFood(ev){
-  ev.preventDefault(); const name=$('#foodName').value.trim(); if(!name)return; const hydrationOz=+$('#foodHydration').value||0; const entry={id:`food-${Date.now()}`,date:todaysWorkout().date,name,serving:$('#foodServing').value.trim(),calories:+$('#foodCalories').value||0,protein:+$('#foodProtein').value||0,carbs:+$('#foodCarbs').value||0,fat:+$('#foodFat').value||0,hydrationOz,icon:$('#foodIcon').value.trim()||'🍽️',source:$('#foodSource').value||null}; entry.xp=nutritionXP(entry); state.nutrition.push(entry); if(hydrationOz){const c=getCheckIn(entry.date);upsertCheckIn({waterOz:Number(c?.waterOz||0)+hydrationOz},entry.date);} $('#foodDialog').close(); toast(`🍎 Provisions logged · +${entry.xp} XP`); render();
-}
-async function lookupFood(){
-  const term=$('#foodName').value.trim(); if(term.length<2){toast('🔎 Type at least 2 letters first');return;} const btn=$('#foodLookupBtn'); const resultBox=$('#onlineFoodResults'); btn.disabled=true; btn.textContent='Searching…'; resultBox.hidden=false; resultBox.innerHTML='<div class="search-status">Contacting Open Food Facts…</div>';
-  try{ const results=await searchOpenFoodFacts(term); if(!results.length){resultBox.innerHTML='<div class="search-status">No matching products found. Try a brand or a more specific name.</div>';return;} resultBox.innerHTML=results.map((f,i)=>`<button type="button" class="online-food-result" data-online-index="${i}"><span>🔎</span><div><strong>${escapeHtml(f.name)}</strong><small>${escapeHtml(f.brand||'Open Food Facts')} · ${escapeHtml(f.serving)}</small></div><b>${Math.round(f.calories||0)} cal</b></button>`).join(''); $$('[data-online-index]').forEach(el=>el.addEventListener('click',()=>{fillFood(results[+el.dataset.onlineIndex]);resultBox.hidden=true;toast('🔎 Nutrition data loaded — verify the serving size');})); }
-  catch(err){ resultBox.innerHTML='<div class="search-status error">Online lookup is unavailable right now. Built-in foods and manual entry still work.</div>'; console.warn(err); }
-  finally{btn.disabled=false;btn.textContent='🔎 Search Online';}
+function renderAchievements(
+  summary
+) {
+  $('#achievementCount')
+    .textContent =
+      `${
+        summary.unlocked.length
+      } / ${
+        summary.total
+          .toLocaleString()
+      }`;
+
+  const unlocked =
+    summary.unlocked
+      .slice(-3)
+      .reverse();
+
+  const upcoming =
+    summary.archive
+      .filter(
+        a =>
+          !a.unlocked &&
+          a.kind !==
+            'landmark' &&
+          a.kind !==
+            'secret'
+      )
+      .slice(0, 2);
+
+  const cards =
+    [
+      ...unlocked,
+      ...upcoming
+    ].slice(0, 5);
+
+  $('#achievementPreview')
+    .innerHTML =
+      cards
+        .map(
+          a => `
+            <div class="achievement ${
+              a.unlocked
+                ? 'unlocked'
+                : 'locked'
+            }">
+              <span>
+                ${
+                  a.unlocked
+                    ? a.icon
+                    : '🔒'
+                }
+              </span>
+
+              <div>
+                <strong>
+                  ${escapeHtml(
+                    a.name
+                  )}
+                </strong>
+
+                <small>
+                  ${
+                    a.unlocked
+                      ? (
+                          a.flavor ||
+                          'Achievement unlocked'
+                        )
+                      : `Target: ${a.target.toLocaleString()}`
+                  }
+                </small>
+              </div>
+            </div>
+          `
+        )
+        .join('');
+
+  $('#distanceTotal')
+    .textContent =
+      `${summary.distance.toFixed(
+        2
+      )} mi`;
+
+  const next =
+    summary.nextLandmark;
+
+  $('#nextLandmarkName')
+    .textContent =
+      next.unlocked
+        ? 'Atlas Campaign Complete'
+        : next.name;
+
+  $('#nextLandmarkProgress')
+    .textContent =
+      next.unlocked
+        ? 'Legendary distance achieved.'
+        : `${next.remaining.toFixed(
+            2
+          )} mi remaining · ${
+            next.place
+          }`;
+
+  const prevIndex =
+    summary.landmarks
+      .findIndex(
+        l =>
+          l.id ===
+          next.id
+      ) - 1;
+
+  const prevMiles =
+    prevIndex >= 0
+      ? summary.landmarks[
+          prevIndex
+        ].miles
+      : 0;
+
+  const pct =
+    next.unlocked
+      ? 100
+      : Math.max(
+          0,
+          Math.min(
+            100,
+            (
+              (
+                summary.distance -
+                prevMiles
+              ) /
+              (
+                next.miles -
+                prevMiles
+              )
+            ) * 100
+          )
+        );
+
+  $('#landmarkBar')
+    .style.width =
+      `${pct}%`;
+
+  const unlockedLandmarks =
+    summary.landmarks.filter(
+      l => l.unlocked
+    );
+
+  const visible = [
+    ...unlockedLandmarks
+      .slice(-3),
+
+    ...summary.landmarks
+      .filter(
+        l =>
+          !l.unlocked
+      )
+      .slice(0, 4)
+  ];
+
+  $('#landmarkGrid')
+    .innerHTML =
+      visible
+        .map(
+          l => `
+            <article
+              class="landmark ${
+                l.unlocked
+                  ? 'unlocked'
+                  : 'locked'
+              }"
+            >
+              <div class="sketch">
+                ${sketchSVG(
+                  l.sketch
+                )}
+              </div>
+
+              <div class="landmark-copy">
+                <span>
+                  ${
+                    l.unlocked
+                      ? 'FIELD STAMPED'
+                      : 'DISTANCE TARGET'
+                  }
+                </span>
+
+                <strong>
+                  ${escapeHtml(
+                    l.name
+                  )}
+                </strong>
+
+                <small>
+                  ${escapeHtml(
+                    l.place
+                  )}
+                  · ${
+                    l.miles
+                      .toLocaleString()
+                  } mi
+                </small>
+
+                <p>
+                  ${
+                    l.unlocked
+                      ? escapeHtml(
+                          l.flavor
+                        )
+                      : `${l.remaining.toFixed(
+                          2
+                        )} mi to unlock`
+                  }
+                </p>
+              </div>
+            </article>
+          `
+        )
+        .join('');
 }
 
-function saveIdentity(){
-  const dob=$('#profileDob').value; const parsed=parseHeight($('#profileHeightText').value); if(!dob){toast('🎂 Add your date of birth first');return;} if(!parsed){toast('📏 Try height like 5\'10", 70 in, or 178 cm');return;} state.profile.dateOfBirth=dob; Object.assign(state.profile,parsed); delete state.profile.age; delete state.profile.height; delete state.profile.heightUnit; $('#identityEditor').hidden=true; toast('🧙 Identity stats locked into your dossier'); render();
-}
-function saveCheckIn(){
-  const hRaw=$('#dailySleepHours').value, mRaw=$('#dailySleepMinutes').value;
-  const hasSleep=hRaw!=='' || mRaw!=='';
-  const h=Math.max(0,Math.min(24,parseInt(hRaw||'0',10)||0));
-  const m=Math.max(0,Math.min(59,parseInt(mRaw||'0',10)||0));
-  const sleepMinutes=hasSleep ? (h*60+m) : null;
-  const patch={weight:+$('#dailyWeight').value||null,weightUnit:$('#dailyWeightUnit').value,sleepMinutes,sleepHours:sleepMinutes==null?null:Number((sleepMinutes/60).toFixed(2)),waterOz:+$('#dailyWater').value||0}; upsertCheckIn(patch); toast('📡 Daily recovery intel saved'); render();
-}
-function addWater(amount){ const next=(+$('#dailyWater').value||0)+amount; $('#dailyWater').value=next; upsertCheckIn({waterOz:next}); toast(`💧 +${amount} oz water`); render(); }
-function createNewWorkout(ev){
-  ev.preventDefault(); const dateValue=$('#newWorkoutDate').value||localDateISO(); const local=new Date(`${dateValue}T12:00:00`); const day=new Intl.DateTimeFormat('en-US',{weekday:'long'}).format(local); const time=$('#newWorkoutTime').value||new Date().toLocaleTimeString([],{hour:'numeric',minute:'2-digit'}); const number=state.workouts.length+1; state.workouts.push({id:`${dateValue}-day-${number}-${Date.now()}`,date:dateValue,day,title:`Day ${number}: ${$('#newWorkoutTitle').value.trim()||'A New Quest'}`,startTime:'',startTimeExact:time,note:$('#newWorkoutNote').value.trim()||'A new adventure begins.',exercises:[]}); $('#newWorkoutDialog').close(); toast('🗺️ New adventure started!'); render(); setTimeout(()=>$('#exerciseCodexSection')?.scrollIntoView({behavior:'smooth'}),150);
-}
-function toast(message){ const el=$('#toast'); el.textContent=message; el.classList.add('show'); clearTimeout(window.__fitquestToast); window.__fitquestToast=setTimeout(()=>el.classList.remove('show'),2600); }
+function openExerciseDialog(
+  exercise = null,
+  editIndex = null
+) {
+  const isLoggedExercise =
+    editIndex !== null;
 
-$('#addExerciseBtn').addEventListener('click',()=>openExerciseDialog()); $('#exerciseType').addEventListener('change',updateExerciseFields); $('#exerciseForm').addEventListener('submit',saveExercise);
-$('#editIdentityBtn').addEventListener('click',()=>{$('#identityEditor').hidden=!$('#identityEditor').hidden;}); $('#saveIdentityBtn').addEventListener('click',saveIdentity); $('#saveCheckInBtn').addEventListener('click',saveCheckIn); $$('[data-water-add]').forEach(b=>b.addEventListener('click',()=>addWater(+b.dataset.waterAdd)));
-$('#addFoodBtn').addEventListener('click',()=>openFoodDialog()); $('#foodForm').addEventListener('submit',saveFood); $('#foodLookupBtn').addEventListener('click',lookupFood); $('#foodName').addEventListener('change',()=>{ const match=findQuickFood($('#foodName').value); if(match)fillFood(match); });
-$('#quickFoods').innerHTML=quickFoods.slice(0,18).map((f,i)=>`<button class="food-chip" data-food-index="${i}">${f.icon} ${f.name}</button>`).join(''); $$('[data-food-index]').forEach(btn=>btn.addEventListener('click',()=>openFoodDialog(quickFoods[+btn.dataset.foodIndex]))); $('#foodSuggestions').innerHTML=quickFoods.map(f=>`<option value="${escapeHtml(f.name)}"></option>`).join('');
-$('#newWorkoutBtn').addEventListener('click',()=>{const now=new Date();$('#newWorkoutDate').value=localDateISO(now);$('#newWorkoutTime').value=now.toLocaleTimeString([],{hour:'numeric',minute:'2-digit'});$('#newWorkoutTitle').value='';$('#newWorkoutNote').value='';$('#newWorkoutDialog').showModal();}); $('#newWorkoutForm').addEventListener('submit',createNewWorkout);
-$$('.dialog-close').forEach(btn=>btn.addEventListener('click',()=>{const id=btn.dataset.closeDialog; const dialog=id?document.getElementById(id):btn.closest('dialog'); dialog?.close();})); $$('dialog').forEach(dialog=>dialog.addEventListener('click',ev=>{if(ev.target===dialog)dialog.close();}));
-$('#classifiedBtn').addEventListener('click',()=>{const m=$('#classifiedMessage');m.hidden=!m.hidden;toast(m.hidden?'📡 Field channel closed':'📡 Encrypted field note decoded');}); $('#levelChip').addEventListener('click',()=>{titleTapCount++;if(titleTapCount>=5){titleTapCount=0;state.ui.stealthMode=!state.ui.stealthMode;toast(state.ui.stealthMode?'❗ Stealth Interface engaged. Keep a low profile.':'📡 Standard interface restored.');render();}});
+  $('#exerciseDialogTitle')
+    .textContent =
+      isLoggedExercise
+        ? 'Edit Exercise'
+        : exercise
+        ? `Log ${exercise.name}`
+        : 'Teach FitQuest a Move';
 
-render();
+  $('#exerciseEditIndex')
+    .value =
+      editIndex ?? '';
+
+  $('#exerciseName').value =
+    exercise?.name || '';
+
+  $('#exerciseType').value =
+    exercise?.type ||
+    'strength';
+
+  $('#exerciseIcon').value =
+    exercise?.icon ||
+    (
+      exercise?.type ===
+      'cardio'
+        ? '🏃'
+        : '⚔️'
+    );
+
+  $('#exerciseSets').value =
+    exercise?.sets || 3;
+
+  $('#exerciseReps').value =
+    exercise?.reps || 10;
+
+  $('#exerciseWeight')
+    .value =
+      exercise?.weight ||
+      '';
+
+  $('#exerciseDuration')
+    .value =
+      exercise?.duration ||
+      20;
+
+  $('#exerciseDistance')
+    .value =
+      exercise?.distance ??
+      '';
+
+  $('#exerciseDistanceUnit')
+    .value =
+      exercise?.distanceUnit ||
+      'mi';
+
+  updateExerciseFields();
+
+  $('#exerciseDialog')
+    .showModal();
+}
+
+function updateExerciseFields() {
+  const cardio =
+    $('#exerciseType')
+      .value === 'cardio';
+
+  $('#strengthFields')
+    .hidden =
+      cardio;
+
+  $('#cardioFields')
+    .hidden =
+      !cardio;
+}
+
+function saveExercise(ev) {
+  ev.preventDefault();
+
+  const name =
+    $('#exerciseName')
+      .value
+      .trim();
+
+  if (!name) return;
+
+  const type =
+    $('#exerciseType')
+      .value;
+
+  const icon =
+    $('#exerciseIcon')
+      .value
+      .trim() ||
+    (
+      type === 'cardio'
+        ? '🏃'
+        : '⚔️'
+    );
+
+  const duration =
+    +$('#exerciseDuration')
+      .value || 1;
+
+  const distance =
+    +$('#exerciseDistance')
+      .value || 0;
+
+  const entry =
+    type === 'cardio'
+      ? {
+          type,
+          name,
+          duration,
+          distance:
+            distance || null,
+          distanceUnit:
+            $('#exerciseDistanceUnit')
+              .value,
+          icon,
+          xp:
+            nextExerciseXP(
+              type,
+              0,
+              duration,
+              distance
+            )
+        }
+      : {
+          type,
+          name,
+          sets:
+            +$('#exerciseSets')
+              .value || 1,
+          reps:
+            +$('#exerciseReps')
+              .value || 1,
+          weight:
+            $('#exerciseWeight')
+              .value
+              .trim() ||
+            null,
+          icon,
+          xp:
+            nextExerciseXP(
+              type,
+              +$('#exerciseSets')
+                .value
+            )
+        };
+
+  const editIndex =
+    $('#exerciseEditIndex')
+      .value;
+
+  if (editIndex !== '') {
+    todaysWorkout()
+      .exercises[
+        +editIndex
+      ] = entry;
+  } else {
+    todaysWorkout()
+      .exercises.push(
+        entry
+      );
+  }
+
+  const existing =
+    state.exerciseLibrary
+      .find(
+        e =>
+          e.name
+            .toLowerCase() ===
+          name.toLowerCase()
+      );
+
+  if (!existing) {
+    state.exerciseLibrary.push({
+      id: slugify(name),
+      name,
+      type,
+      icon
+    });
+
+    toast(
+      `📖 ${name} learned by the Exercise Codex!`
+    );
+  } else {
+    existing.type =
+      type;
+
+    existing.icon =
+      icon;
+
+    toast(
+      `⚔️ ${name} logged!`
+    );
+  }
+
+  $('#exerciseDialog')
+    .close();
+
+  render();
+}
+
+function fillFood(food) {
+  $('#foodName').value =
+    food?.name || '';
+
+  $('#foodServing')
+    .value =
+      food?.serving ||
+      '1 serving';
+
+  $('#foodCalories')
+    .value =
+      Number.isFinite(
+        Number(
+          food?.calories
+        )
+      )
+        ? Number(
+            food.calories
+          ).toFixed(0)
+        : '';
+
+  $('#foodProtein')
+    .value =
+      food?.protein ?? '';
+
+  $('#foodCarbs')
+    .value =
+      food?.carbs ?? '';
+
+  $('#foodFat').value =
+    food?.fat ?? '';
+
+  $('#foodHydration')
+    .value =
+      food?.hydrationOz ??
+      '';
+
+  $('#foodIcon').value =
+    food?.icon || '🍽️';
+
+  $('#foodSource').value =
+    food?.source || '';
+}
+
+function openFoodDialog(
+  food = null
+) {
+  fillFood(
+    food || {}
+  );
+
+  $('#onlineFoodResults')
+    .hidden = true;
+
+  $('#onlineFoodResults')
+    .innerHTML = '';
+
+  $('#foodDialog')
+    .showModal();
+}
+
+function saveFood(ev) {
+  ev.preventDefault();
+
+  const name =
+    $('#foodName')
+      .value
+      .trim();
+
+  if (!name) return;
+
+  const hydrationOz =
+    +$('#foodHydration')
+      .value || 0;
+
+  const entry = {
+    id:
+      `food-${Date.now()}`,
+
+    date:
+      todaysWorkout().date,
+
+    name,
+
+    serving:
+      $('#foodServing')
+        .value
+        .trim(),
+
+    calories:
+      +$('#foodCalories')
+        .value || 0,
+
+    protein:
+      +$('#foodProtein')
+        .value || 0,
+
+    carbs:
+      +$('#foodCarbs')
+        .value || 0,
+
+    fat:
+      +$('#foodFat')
+        .value || 0,
+
+    hydrationOz,
+
+    icon:
+      $('#foodIcon')
+        .value
+        .trim() ||
+      '🍽️',
+
+    source:
+      $('#foodSource')
+        .value ||
+      null
+  };
+
+  entry.xp =
+    nutritionXP(entry);
+
+  state.nutrition.push(
+    entry
+  );
+
+  if (hydrationOz) {
+    const c =
+      getCheckIn(
+        entry.date
+      );
+
+    upsertCheckIn(
+      {
+        waterOz:
+          Number(
+            c?.waterOz ||
+            0
+          ) +
+          hydrationOz
+      },
+      entry.date
+    );
+  }
+
+  $('#foodDialog')
+    .close();
+
+  toast(
+    `🍎 Provisions logged · +${entry.xp} XP`
+  );
+
+  render();
+}
+
+async function lookupFood() {
+  const term =
+    $('#foodName')
+      .value
+      .trim();
+
+  if (
+    term.length < 2
+  ) {
+    toast(
+      '🔎 Type at least 2 letters first'
+    );
+
+    return;
+  }
+
+  const btn =
+    $('#foodLookupBtn');
+
+  const resultBox =
+    $('#onlineFoodResults');
+
+  btn.disabled = true;
+
+  btn.textContent =
+    'Searching…';
+
+  resultBox.hidden =
+    false;
+
+  resultBox.innerHTML =
+    '<div class="search-status">Contacting Open Food Facts…</div>';
+
+  try {
+    const results =
+      await searchOpenFoodFacts(
+        term
+      );
+
+    if (
+      !results.length
+    ) {
+      resultBox.innerHTML =
+        '<div class="search-status">No matching products found. Try a brand or a more specific name.</div>';
+
+      return;
+    }
+
+    resultBox.innerHTML =
+      results
+        .map(
+          (f, i) => `
+            <button
+              type="button"
+              class="online-food-result"
+              data-online-index="${i}"
+            >
+              <span>🔎</span>
+
+              <div>
+                <strong>
+                  ${escapeHtml(
+                    f.name
+                  )}
+                </strong>
+
+                <small>
+                  ${escapeHtml(
+                    f.brand ||
+                    'Open Food Facts'
+                  )}
+                  · ${escapeHtml(
+                    f.serving
+                  )}
+                </small>
+              </div>
+
+              <b>
+                ${Math.round(
+                  f.calories ||
+                  0
+                )} cal
+              </b>
+            </button>
+          `
+        )
+        .join('');
+
+    $$(
+      '[data-online-index]'
+    ).forEach(
+      el =>
+        el.addEventListener(
+          'click',
+          () => {
+            fillFood(
+              results[
+                +el.dataset
+                  .onlineIndex
+              ]
+            );
+
+            resultBox.hidden =
+              true;
+
+            toast(
+              '🔎 Nutrition data loaded — verify the serving size'
+            );
+          }
+        )
+    );
+
+  } catch (err) {
+    resultBox.innerHTML =
+      '<div class="search-status error">Online lookup is unavailable right now. Built-in foods and manual entry still work.</div>';
+
+    console.warn(err);
+
+  } finally {
+    btn.disabled =
+      false;
+
+    btn.textContent =
+      '🔎 Search Online';
+  }
+}
+
+function saveIdentity() {
+  const dob =
+    $('#profileDob')
+      .value;
+
+  const parsed =
+    parseHeight(
+      $('#profileHeightText')
+        .value
+    );
+
+  if (!dob) {
+    toast(
+      '🎂 Add your date of birth first'
+    );
+
+    return;
+  }
+
+  if (!parsed) {
+    toast(
+      '📏 Try height like 5\'10", 70 in, or 178 cm'
+    );
+
+    return;
+  }
+
+  state.profile
+    .dateOfBirth =
+      dob;
+
+  Object.assign(
+    state.profile,
+    parsed
+  );
+
+  delete state.profile.age;
+  delete state.profile.height;
+  delete state.profile.heightUnit;
+
+  $('#identityEditor')
+    .hidden = true;
+
+  toast(
+    '🧙 Identity stats locked into your dossier'
+  );
+
+  render();
+}
+
+function saveCheckIn() {
+  const hRaw =
+    $('#dailySleepHours')
+      .value;
+
+  const mRaw =
+    $('#dailySleepMinutes')
+      .value;
+
+  const hasSleep =
+    hRaw !== '' ||
+    mRaw !== '';
+
+  const h =
+    Math.max(
+      0,
+      Math.min(
+        24,
+        parseInt(
+          hRaw || '0',
+          10
+        ) || 0
+      )
+    );
+
+  const m =
+    Math.max(
+      0,
+      Math.min(
+        59,
+        parseInt(
+          mRaw || '0',
+          10
+        ) || 0
+      )
+    );
+
+  const sleepMinutes =
+    hasSleep
+      ? h * 60 + m
+      : null;
+
+  const patch = {
+    weight:
+      +$('#dailyWeight')
+        .value ||
+      null,
+
+    weightUnit:
+      $('#dailyWeightUnit')
+        .value,
+
+    sleepMinutes,
+
+    sleepHours:
+      sleepMinutes == null
+        ? null
+        : Number(
+            (
+              sleepMinutes /
+              60
+            ).toFixed(2)
+          ),
+
+    waterOz:
+      +$('#dailyWater')
+        .value || 0
+  };
+
+  upsertCheckIn(
+    patch
+  );
+
+  toast(
+    '📡 Daily recovery intel saved'
+  );
+
+  render();
+}
+
+function addWater(amount) {
+  const next =
+    (
+      +$('#dailyWater')
+        .value ||
+      0
+    ) +
+    amount;
+
+  $('#dailyWater').value =
+    next;
+
+  upsertCheckIn({
+    waterOz: next
+  });
+
+  toast(
+    `💧 +${amount} oz water`
+  );
+
+  render();
+}
+
+function createNewWorkout(ev) {
+  ev.preventDefault();
+
+  const dateValue =
+    $('#newWorkoutDate')
+      .value ||
+    localDateISO();
+
+  const local =
+    new Date(
+      `${dateValue}T12:00:00`
+    );
+
+  const day =
+    new Intl.DateTimeFormat(
+      'en-US',
+      {
+        weekday:
+          'long'
+      }
+    ).format(local);
+
+  const time =
+    $('#newWorkoutTime')
+      .value ||
+    new Date()
+      .toLocaleTimeString(
+        [],
+        {
+          hour: 'numeric',
+          minute: '2-digit'
+        }
+      );
+
+  const number =
+    state.workouts
+      .length + 1;
+
+  state.workouts.push({
+    id:
+      `${dateValue}-day-${number}-${Date.now()}`,
+
+    date:
+      dateValue,
+
+    day,
+
+    title:
+      `Day ${number}: ${
+        $('#newWorkoutTitle')
+          .value
+          .trim() ||
+        'A New Quest'
+      }`,
+
+    startTime: '',
+
+    startTimeExact:
+      time,
+
+    note:
+      $('#newWorkoutNote')
+        .value
+        .trim() ||
+      'A new adventure begins.',
+
+    exercises: []
+  });
+
+  $('#newWorkoutDialog')
+    .close();
+
+  toast(
+    '🗺️ New adventure started!'
+  );
+
+  render();
+
+  setTimeout(
+    () =>
+      $('#exerciseCodexSection')
+        ?.scrollIntoView({
+          behavior:
+            'smooth'
+        }),
+    150
+  );
+}
+
+function toast(message) {
+  const el =
+    $('#toast');
+
+  if (!el) return;
+
+  el.textContent =
+    message;
+
+  el.classList.add(
+    'show'
+  );
+
+  clearTimeout(
+    window
+      .__fitquestToast
+  );
+
+  window.__fitquestToast =
+    setTimeout(
+      () =>
+        el.classList
+          .remove(
+            'show'
+          ),
+      2600
+    );
+}
+
+function bindAppEvents() {
+  $('#addExerciseBtn')
+    .addEventListener(
+      'click',
+      () =>
+        openExerciseDialog()
+    );
+
+  $('#exerciseType')
+    .addEventListener(
+      'change',
+      updateExerciseFields
+    );
+
+  $('#exerciseForm')
+    .addEventListener(
+      'submit',
+      saveExercise
+    );
+
+  $('#editIdentityBtn')
+    .addEventListener(
+      'click',
+      () => {
+        $('#identityEditor')
+          .hidden =
+            !$('#identityEditor')
+              .hidden;
+      }
+    );
+
+  $('#saveIdentityBtn')
+    .addEventListener(
+      'click',
+      saveIdentity
+    );
+
+  $('#saveCheckInBtn')
+    .addEventListener(
+      'click',
+      saveCheckIn
+    );
+
+  $$(
+    '[data-water-add]'
+  ).forEach(
+    b =>
+      b.addEventListener(
+        'click',
+        () =>
+          addWater(
+            +b.dataset
+              .waterAdd
+          )
+      )
+  );
+
+  $('#addFoodBtn')
+    .addEventListener(
+      'click',
+      () =>
+        openFoodDialog()
+    );
+
+  $('#foodForm')
+    .addEventListener(
+      'submit',
+      saveFood
+    );
+
+  $('#foodLookupBtn')
+    .addEventListener(
+      'click',
+      lookupFood
+    );
+
+  $('#foodName')
+    .addEventListener(
+      'change',
+      () => {
+        const match =
+          findQuickFood(
+            $('#foodName')
+              .value
+          );
+
+        if (match) {
+          fillFood(
+            match
+          );
+        }
+      }
+    );
+
+  $('#quickFoods')
+    .innerHTML =
+      quickFoods
+        .slice(0, 18)
+        .map(
+          (f, i) =>
+            `<button class="food-chip" data-food-index="${i}">${f.icon} ${f.name}</button>`
+        )
+        .join('');
+
+  $$(
+    '[data-food-index]'
+  ).forEach(
+    btn =>
+      btn.addEventListener(
+        'click',
+        () =>
+          openFoodDialog(
+            quickFoods[
+              +btn.dataset
+                .foodIndex
+            ]
+          )
+      )
+  );
+
+  $('#foodSuggestions')
+    .innerHTML =
+      quickFoods
+        .map(
+          f =>
+            `<option value="${escapeHtml(
+              f.name
+            )}"></option>`
+        )
+        .join('');
+
+  $('#newWorkoutBtn')
+    .addEventListener(
+      'click',
+      () => {
+        const now =
+          new Date();
+
+        $('#newWorkoutDate')
+          .value =
+            localDateISO(
+              now
+            );
+
+        $('#newWorkoutTime')
+          .value =
+            now.toLocaleTimeString(
+              [],
+              {
+                hour:
+                  'numeric',
+                minute:
+                  '2-digit'
+              }
+            );
+
+        $('#newWorkoutTitle')
+          .value = '';
+
+        $('#newWorkoutNote')
+          .value = '';
+
+        $('#newWorkoutDialog')
+          .showModal();
+      }
+    );
+
+  $('#newWorkoutForm')
+    .addEventListener(
+      'submit',
+      createNewWorkout
+    );
+
+  $$(
+    '.dialog-close'
+  ).forEach(
+    btn =>
+      btn.addEventListener(
+        'click',
+        () => {
+          const id =
+            btn.dataset
+              .closeDialog;
+
+          const dialog =
+            id
+              ? document
+                  .getElementById(
+                    id
+                  )
+              : btn.closest(
+                  'dialog'
+                );
+
+          dialog?.close();
+        }
+      )
+  );
+
+  $$('dialog')
+    .forEach(
+      dialog =>
+        dialog.addEventListener(
+          'click',
+          ev => {
+            if (
+              ev.target ===
+              dialog
+            ) {
+              dialog.close();
+            }
+          }
+        )
+    );
+
+  $('#classifiedBtn')
+    .addEventListener(
+      'click',
+      () => {
+        const m =
+          $('#classifiedMessage');
+
+        m.hidden =
+          !m.hidden;
+
+        toast(
+          m.hidden
+            ? '📡 Field channel closed'
+            : '📡 Encrypted field note decoded'
+        );
+      }
+    );
+
+  $('#levelChip')
+    .addEventListener(
+      'click',
+      () => {
+        titleTapCount++;
+
+        if (
+          titleTapCount >=
+          5
+        ) {
+          titleTapCount =
+            0;
+
+          state.ui
+            .stealthMode =
+              !state.ui
+                .stealthMode;
+
+          toast(
+            state.ui
+              .stealthMode
+              ? '❗ Stealth Interface engaged. Keep a low profile.'
+              : '📡 Standard interface restored.'
+          );
+
+          render();
+        }
+      }
+    );
+}
+
+async function sessionIsValid() {
+  try {
+    const response =
+      await fetch(
+        '/api/auth/me',
+        {
+          method: 'GET',
+          credentials:
+            'same-origin',
+          cache:
+            'no-store'
+        }
+      );
+
+    if (!response.ok) {
+      return false;
+    }
+
+    const result =
+      await response.json();
+
+    return Boolean(
+      result.ok &&
+      result.authenticated
+    );
+
+  } catch {
+    return false;
+  }
+}
+
+export async function startFitQuest() {
+  if (appStarted) {
+    return true;
+  }
+
+  const authenticated =
+    await sessionIsValid();
+
+  if (!authenticated) {
+    return false;
+  }
+
+  state =
+    await loadSave(
+      seedData
+    );
+
+  bindAppEvents();
+
+  appStarted = true;
+
+  render();
+
+  if (
+    typeof window.enterApp ===
+    'function'
+  ) {
+    window.enterApp();
+  }
+
+  return true;
+}
+
+void startFitQuest();
