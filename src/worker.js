@@ -642,7 +642,182 @@ export default {
         );
       }
     }
+    // -----------------------------------------------------
+    // LOAD CLOUD SAVE
+    // -----------------------------------------------------
 
+    if (
+      url.pathname === '/api/save' &&
+      request.method === 'GET'
+    ) {
+      try {
+        const user =
+          await currentUser(
+            request,
+            env
+          );
+
+        if (!user) {
+          return json(
+            {
+              ok: false,
+              error: 'Not authenticated.'
+            },
+            401
+          );
+        }
+
+        const row =
+          await env.DB.prepare(
+            `SELECT save_data, updated_at
+             FROM user_saves
+             WHERE user_id = ?
+             LIMIT 1`
+          )
+            .bind(user.id)
+            .first();
+
+        if (!row) {
+          return json({
+            ok: true,
+            save: null,
+            updated_at: null
+          });
+        }
+
+        let save;
+
+        try {
+          save = JSON.parse(row.save_data);
+        } catch {
+          return json(
+            {
+              ok: false,
+              error:
+                'Stored save data is invalid.'
+            },
+            500
+          );
+        }
+
+        return json({
+          ok: true,
+          save,
+          updated_at: row.updated_at
+        });
+
+      } catch (error) {
+        console.error(
+          'Load save error:',
+          error
+        );
+
+        return json(
+          {
+            ok: false,
+            error:
+              error.message ||
+              String(error)
+          },
+          500
+        );
+      }
+    }
+
+
+    // -----------------------------------------------------
+    // WRITE CLOUD SAVE
+    // -----------------------------------------------------
+
+    if (
+      url.pathname === '/api/save' &&
+      request.method === 'PUT'
+    ) {
+      try {
+        const user =
+          await currentUser(
+            request,
+            env
+          );
+
+        if (!user) {
+          return json(
+            {
+              ok: false,
+              error: 'Not authenticated.'
+            },
+            401
+          );
+        }
+
+        const body =
+          await request.json();
+
+        const save =
+          body?.save;
+
+        if (
+          !save ||
+          typeof save !== 'object'
+        ) {
+          return json(
+            {
+              ok: false,
+              error:
+                'Save data must be an object.'
+            },
+            400
+          );
+        }
+
+        const saveData =
+          JSON.stringify(save);
+
+        await env.DB.prepare(
+          `INSERT INTO user_saves
+            (
+              user_id,
+              save_data,
+              updated_at
+            )
+           VALUES
+            (
+              ?,
+              ?,
+              CURRENT_TIMESTAMP
+            )
+           ON CONFLICT(user_id)
+           DO UPDATE SET
+             save_data = excluded.save_data,
+             updated_at = CURRENT_TIMESTAMP`
+        )
+          .bind(
+            user.id,
+            saveData
+          )
+          .run();
+
+        return json({
+          ok: true
+        });
+
+      } catch (error) {
+        console.error(
+          'Save write error:',
+          error
+        );
+
+        return json(
+          {
+            ok: false,
+            error:
+              error.message ||
+              String(error)
+          },
+          500
+        );
+      }
+    }
 
     // NORMAL FITQUEST FILES
 
