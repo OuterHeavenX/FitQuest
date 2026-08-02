@@ -179,8 +179,10 @@ function renderWeek(){
   monday.setDate(today.getDate() - daysSinceMonday);
 
   const workoutDates = new Set(
-    state.workouts.map(w => w.date)
-  );
+  state.workouts
+    .filter(w => Array.isArray(w.exercises) && w.exercises.length > 0)
+    .map(w => w.date)
+);
 
   $('#weekGrid').innerHTML = labels.map((label, index) => {
     const date = new Date(monday);
