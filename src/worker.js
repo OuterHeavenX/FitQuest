@@ -548,24 +548,16 @@ export default {
 
 
       } catch (error) {
+  console.error('Signup error:', error);
 
-        console.error(
-          'Signup error:',
-          error
-        );
-
-
-        return json(
-          {
-            ok: false,
-            error:
-              'Unable to create account.'
-          },
-          500
-        );
-
-      }
-    }
+  return json(
+    {
+      ok: false,
+      error: error?.message || String(error)
+    },
+    500
+  );
+}
 
 
     // -----------------------------------------------------
