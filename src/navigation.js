@@ -1,4 +1,5 @@
 import './progressOverview.js';
+import './juiceEngine.js';
 const $ = selector => document.querySelector(selector);
 const $$ = selector => [...document.querySelectorAll(selector)];
 
