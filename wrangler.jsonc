@@ -1,6 +1,6 @@
 {
   "name": "fitquest",
-  "main": "src/worker.js",
+  "main": "src/worker-with-youversion.js",
   "compatibility_date": "2026-08-02",
 
   "assets": {
