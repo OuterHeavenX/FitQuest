@@ -146,19 +146,19 @@ async function loadVerse() {
     $('#fqVerseText').textContent = data.content || '';
     $('#fqBibleCopyright').textContent = data.copyright || 'Bible text provided through YouVersion.';
     $('#fqReadChapter').dataset.chapter = data.chapter_id || '';
+    $('#fqReadChapter').dataset.bibleId = data.bible_id || '';
     stateEl.hidden = true;
     content.hidden = false;
   } catch (error) {
     stateEl.hidden = false;
     stateEl.innerHTML = `
-      <strong>📖 YouVersion connection is ready for its App Key.</strong><br>
-      FitQuest has the reader UI installed, but the official YouVersion API requires a server-side App Key.
-      Once that key is added, this card can load the real Verse of the Day and full chapter inside FitQuest.
+      <strong>📖 Verse of the Day is temporarily unavailable.</strong><br>
+      ${String(error?.message || 'FitQuest could not reach YouVersion.')}
     `;
   }
 }
 
-async function readChapter(chapterId) {
+async function readChapter(chapterId, bibleId = '') {
   if (!chapterId) return;
   const reader = $('#fqBibleReader');
   const btn = $('#fqReadChapter');
@@ -168,14 +168,25 @@ async function readChapter(chapterId) {
   btn.textContent = 'Loading Chapter…';
 
   try {
-    const response = await fetch(`/api/youversion/chapter?id=${encodeURIComponent(chapterId)}`, { credentials:'include' });
+    const params = new URLSearchParams({ id: chapterId });
+    if (bibleId) params.set('bible_id', bibleId);
+
+    const response = await fetch(
+      `/api/youversion/chapter?${params.toString()}`,
+      { credentials:'include' }
+    );
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const data = await response.json();
     reader.hidden = false;
     reader.textContent = data.content || 'Chapter unavailable.';
-  } catch {
+
+    if (data.copyright) {
+      $('#fqBibleCopyright').textContent = data.copyright;
+    }
+  } catch (error) {
     reader.hidden = false;
-    reader.textContent = 'The YouVersion server connection is not configured yet.';
+    reader.textContent =
+      `Unable to load the chapter right now. ${String(error?.message || '')}`.trim();
   } finally {
     btn.disabled = false;
     btn.textContent = '📖 Read Full Chapter';
@@ -227,7 +238,10 @@ function renderCamp() {
 
   $('#fqReloadVerse')?.addEventListener('click', loadVerse);
   $('#fqReadChapter')?.addEventListener('click', event => {
-    readChapter(event.currentTarget.dataset.chapter);
+    readChapter(
+      event.currentTarget.dataset.chapter,
+      event.currentTarget.dataset.bibleId
+    );
   });
 }
 
