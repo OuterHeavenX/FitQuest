@@ -1,5 +1,6 @@
 import './progressOverview.js';
 import './juiceEngine.js';
+import './restCamp.js';
 const $ = selector => document.querySelector(selector);
 const $$ = selector => [...document.querySelectorAll(selector)];
 
@@ -9,7 +10,8 @@ const SCREENS = [
   { id: 'nutrition', label: 'Nutrition', icon: '🍎' },
   { id: 'activity', label: 'Activity', icon: '⌚' },
   { id: 'progress', label: 'Progress', icon: '🏆' },
-  { id: 'character', label: 'Character', icon: '🧙' }
+  { id: 'character', label: 'Character', icon: '🧙' },
+  { id: 'camp', label: 'Camp', icon: '🔥' }
 ];
 
 let currentScreen = 'home';
@@ -31,7 +33,7 @@ function styles() {
       top: 10px;
       z-index: 900;
       display: grid;
-      grid-template-columns: repeat(6, minmax(0, 1fr));
+      grid-template-columns: repeat(7, minmax(0, 1fr));
       gap: 7px;
       margin: 14px 0 22px;
       padding: 7px;
@@ -254,7 +256,7 @@ function styles() {
         top: auto;
         z-index: 9990;
         margin: 0;
-        grid-template-columns: repeat(6, 1fr);
+        grid-template-columns: repeat(7, 1fr);
         gap: 3px;
         padding: 6px;
         border-radius: 19px;
@@ -403,6 +405,11 @@ function titleFor(id) {
       'PLAYER DOSSIER',
       'Character',
       'Identity, permanent stats, and the future home of classes, loot, and skill trees.'
+    ],
+    camp: [
+      'REST CAMP',
+      'Camp',
+      'Between-set downtime: personal trivia, Verse of the Day, and a quiet place to reset.'
     ]
   };
 
