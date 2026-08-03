@@ -1,6 +1,7 @@
 import './progressOverview.js';
 import './juiceEngine.js';
 import './restCamp.js';
+import './characterProgression.js';
 const $ = selector => document.querySelector(selector);
 const $$ = selector => [...document.querySelectorAll(selector)];
 
