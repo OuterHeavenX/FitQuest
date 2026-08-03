@@ -1,6 +1,7 @@
 import './navigation.js';
 import './dailyActivity.js';
 import { readCloudSave, writeSave } from './lib/storage.js';
+import { workoutBattlePower } from './lib/progression.js';
 
 const $ = selector => document.querySelector(selector);
 
@@ -259,28 +260,7 @@ function streakFor(data, date) {
 }
 
 function sliceDamage(exercises = [], streak = 0) {
-  if (!exercises.length) return 0;
-
-  const sets = exercises
-    .filter(e => e.type === 'strength')
-    .reduce((n,e) => n + (Number(e.sets) || 0), 0);
-
-  const cardio = exercises
-    .filter(e => e.type === 'cardio')
-    .reduce((n,e) => n + (Number(e.duration) || 0), 0);
-
-  return Math.max(
-    12,
-    Math.min(
-      150,
-      Math.round(
-        exercises.length * 12 +
-        sets * 3 +
-        cardio * 1.5 +
-        Math.min(20, streak * 2)
-      )
-    )
-  );
+  return workoutBattlePower(exercises, streak);
 }
 
 function activityDamage(checkIn) {
