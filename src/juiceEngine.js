@@ -1,5 +1,5 @@
 import { readCloudSave, writeSave } from './lib/storage.js';
-import { calculateStats } from './lib/progression.js';
+import { calculateStats, workoutBattlePower } from './lib/progression.js';
 import { achievementSummary } from './lib/achievements.js';
 
 const $ = selector => document.querySelector(selector);
@@ -73,13 +73,17 @@ function styles() {
       position: fixed;
       z-index: 130000;
       pointer-events: none;
-      padding: 8px 12px;
+      padding: 11px 16px;
       border-radius: 999px;
-      border: 1px solid rgba(132, 243, 198, .26);
-      background: rgba(9, 20, 29, .92);
-      color: #78efb7;
-      font: 900 14px/1 system-ui, sans-serif;
-      box-shadow: 0 14px 42px rgba(0,0,0,.32);
+      border: 1px solid rgba(132, 243, 198, .34);
+      background: rgba(7, 20, 28, .95);
+      color: #82f4bd;
+      font: 950 18px/1 system-ui, sans-serif;
+      letter-spacing: .02em;
+      text-shadow: 0 0 18px rgba(120, 239, 183, .28);
+      box-shadow:
+        0 18px 52px rgba(0,0,0,.38),
+        0 0 30px rgba(105,232,177,.10);
       animation: fitquestXpFloat 1.45s ease forwards;
     }
 
@@ -270,6 +274,104 @@ function styles() {
       font: inherit;
       font-weight: 950;
       cursor: pointer;
+    }
+
+
+    .fitquest-action-feed {
+      position: fixed;
+      z-index: 135000;
+      right: 16px;
+      top: calc(env(safe-area-inset-top, 0px) + 86px);
+      width: min(360px, calc(100vw - 32px));
+      display: grid;
+      gap: 9px;
+      pointer-events: none;
+    }
+
+    .fitquest-action-toast {
+      display: grid;
+      grid-template-columns: 42px minmax(0, 1fr);
+      gap: 11px;
+      align-items: center;
+      padding: 12px 14px;
+      border-radius: 16px;
+      border: 1px solid rgba(255,255,255,.10);
+      background: rgba(8, 14, 29, .94);
+      box-shadow: 0 18px 60px rgba(0,0,0,.34);
+      backdrop-filter: blur(16px);
+      animation: fitquestActionIn 2.8s ease forwards;
+    }
+
+    .fitquest-action-toast.damage {
+      border-color: rgba(255,111,120,.24);
+      background:
+        linear-gradient(135deg, rgba(255,80,90,.08), transparent 45%),
+        rgba(8,14,29,.95);
+    }
+
+    .fitquest-action-toast.xp {
+      border-color: rgba(105,232,177,.22);
+    }
+
+    .fitquest-action-toast.rare {
+      border-color: rgba(172,112,255,.25);
+      box-shadow:
+        0 18px 60px rgba(0,0,0,.34),
+        0 0 35px rgba(155,93,255,.10);
+    }
+
+    .fitquest-action-icon {
+      width: 42px;
+      height: 42px;
+      display: grid;
+      place-items: center;
+      border-radius: 13px;
+      background: rgba(255,255,255,.055);
+      font-size: 21px;
+    }
+
+    .fitquest-action-copy strong,
+    .fitquest-action-copy small {
+      display: block;
+    }
+
+    .fitquest-action-copy strong {
+      color: #f2f5ff;
+      font-size: 13px;
+      line-height: 1.2;
+    }
+
+    .fitquest-action-copy small {
+      margin-top: 3px;
+      color: #8e9bb5;
+      font-size: 10px;
+      line-height: 1.3;
+    }
+
+    @keyframes fitquestActionIn {
+      0% { opacity: 0; transform: translateX(18px) scale(.96); }
+      10% { opacity: 1; transform: translateX(0) scale(1); }
+      82% { opacity: 1; transform: translateX(0); }
+      100% { opacity: 0; transform: translateX(14px); }
+    }
+
+    #fitquestBossBattle.fitquest-hp-chunk .fitquest-boss-bar > i {
+      filter: brightness(1.55) saturate(1.25);
+      box-shadow: 0 0 28px rgba(255,112,112,.42);
+    }
+
+    #xpBar.fitquest-xp-pulse {
+      filter: brightness(1.45);
+      box-shadow: 0 0 20px rgba(218, 103, 255, .28);
+      transition: width .35s ease;
+    }
+
+    @media (max-width: 720px) {
+      .fitquest-action-feed {
+        top: calc(env(safe-area-inset-top, 0px) + 72px);
+        right: 10px;
+        width: min(330px, calc(100vw - 20px));
+      }
     }
 
     .fitquest-rarity-common { color: #bbc5d8; }
@@ -475,6 +577,140 @@ function xpFloat(amount, anchor = $('#xpBar') || $('#totalXpStat')) {
   setTimeout(() => el.remove(), 1700);
 }
 
+
+function actionToast(icon, title, detail = '', tone = '') {
+  let feed = $('#fitquestActionFeed');
+
+  if (!feed) {
+    feed = document.createElement('div');
+    feed.id = 'fitquestActionFeed';
+    feed.className = 'fitquest-action-feed';
+    document.body.appendChild(feed);
+  }
+
+  const toast = document.createElement('div');
+  toast.className = `fitquest-action-toast ${tone}`.trim();
+  toast.innerHTML = `
+    <div class="fitquest-action-icon">${icon}</div>
+    <div class="fitquest-action-copy">
+      <strong>${title}</strong>
+      ${detail ? `<small>${detail}</small>` : ''}
+    </div>
+  `;
+
+  feed.prepend(toast);
+
+  while (feed.children.length > 3) {
+    feed.lastElementChild?.remove();
+  }
+
+  setTimeout(() => toast.remove(), 3000);
+}
+
+function pulseXpBar() {
+  const bar = $('#xpBar');
+  if (!bar) return;
+
+  bar.classList.remove('fitquest-xp-pulse');
+  void bar.offsetWidth;
+  bar.classList.add('fitquest-xp-pulse');
+
+  setTimeout(
+    () => bar.classList.remove('fitquest-xp-pulse'),
+    700
+  );
+}
+
+function chunkBossHealth() {
+  const card = $('#fitquestBossBattle');
+  if (!card) return;
+
+  card.classList.remove('fitquest-hp-chunk');
+  void card.offsetWidth;
+  card.classList.add('fitquest-hp-chunk');
+
+  setTimeout(
+    () => card.classList.remove('fitquest-hp-chunk'),
+    800
+  );
+}
+
+function estimatedActivityDamage(checkIn) {
+  if (!checkIn) return 0;
+
+  return Math.max(
+    0,
+    Math.min(
+      60,
+      Math.floor((Number(checkIn.steps) || 0) / 1000) * 2 +
+      Math.floor((Number(checkIn.activeCalories) || 0) / 100) * 2 +
+      Math.floor((Number(checkIn.exerciseMinutes) || 0) / 15) * 3 +
+      ((Number(checkIn.standHours) || 0) >= 10 ? 5 : 0)
+    )
+  );
+}
+
+function readyDamageSnapshot(data) {
+  const date = todayISO();
+  const workout =
+    (data.workouts || []).find(item => item.date === date);
+
+  const exercises =
+    Array.isArray(workout?.exercises)
+      ? workout.exercises
+      : [];
+
+  const submitted =
+    Math.max(
+      0,
+      Number(workout?.bossSubmittedExerciseCount) || 0
+    );
+
+  const pendingExercises = exercises.slice(submitted);
+
+  const dates = [...new Set(
+    (data.workouts || [])
+      .filter(w => w.completed && w.date && w.date <= date)
+      .map(w => w.date)
+  )].sort();
+
+  let streak = dates.length ? 1 : 0;
+
+  for (let i = dates.length - 1; i > 0; i--) {
+    const a = new Date(`${dates[i]}T12:00:00`);
+    const b = new Date(`${dates[i - 1]}T12:00:00`);
+
+    if (Math.round((a - b) / 86400000) === 1) {
+      streak++;
+    } else {
+      break;
+    }
+  }
+
+  const workoutDamage =
+    workoutBattlePower(pendingExercises, streak);
+
+  const checkIn =
+    (data.checkIns || []).find(item => item.date === date);
+
+  const totalActivity =
+    estimatedActivityDamage(checkIn);
+
+  const appliedActivity =
+    Math.max(
+      0,
+      Number(checkIn?.bossActivityDamageApplied) ||
+      Number(checkIn?.bossActivityApplied?.damage) ||
+      0
+    );
+
+  return {
+    workoutDamage,
+    activityDamage:
+      Math.max(0, totalActivity - appliedActivity)
+  };
+}
+
 function queueModal(config) {
   modalQueue.push(config);
   pumpModalQueue();
@@ -566,8 +802,12 @@ function summary(data) {
       .filter(Boolean)
   );
 
+  const readyDamage = readyDamageSnapshot(data);
+
   return {
     stats,
+    readyWorkoutDamage: readyDamage.workoutDamage,
+    readyActivityDamage: readyDamage.activityDamage,
     achievementIds: new Set(achievements.unlocked.map(item => item.id)),
     achievementsById: new Map(achievements.unlocked.map(item => [item.id, item])),
     inventoryIds: new Set(inventory.map(item => item.id)),
@@ -907,12 +1147,25 @@ async function compareNow() {
 
     if (xpDelta > 0) {
       xpFloat(xpDelta);
+      pulseXpBar();
+      actionToast(
+        '✨',
+        `+${xpDelta} XP`,
+        'Campaign experience increased.',
+        'xp'
+      );
     }
 
     if (
       next.stats.streak > snapshot.stats.streak &&
       STREAK_MILESTONES.has(next.stats.streak)
     ) {
+      actionToast(
+        '🔥',
+        `${next.stats.streak}-day streak`,
+        'Momentum maintained.',
+        'rare'
+      );
       announceStreak(next.stats.streak);
     }
 
@@ -921,7 +1174,15 @@ async function compareNow() {
       .map(id => next.achievementsById.get(id))
       .filter(Boolean);
 
-    newAchievements.slice(0, 2).forEach(announceAchievement);
+    newAchievements.slice(0, 2).forEach(item => {
+      actionToast(
+        item.icon || '🏆',
+        'Achievement unlocked',
+        item.name || 'New campaign milestone.',
+        'rare'
+      );
+      announceAchievement(item);
+    });
 
     const newActivityAchievements =
       [...next.activityAchievementIds]
@@ -930,6 +1191,13 @@ async function compareNow() {
         .filter(Boolean);
 
     newActivityAchievements.forEach(item => {
+      actionToast(
+        item.icon || '⌚',
+        'Activity achievement',
+        item.name || 'Movement milestone reached.',
+        'rare'
+      );
+
       announceAchievement({
         ...item,
         kind: 'activity'
@@ -948,12 +1216,48 @@ async function compareNow() {
           boss.lastAttack,
           boss.defeated && !previousBoss?.defeated
         );
+
+        chunkBossHealth();
+
+        actionToast(
+          boss.lastAttack.source === 'activity' ? '⌚' : '⚔️',
+          `Boss −${Math.round(Number(boss.lastAttack.damage) || 0)} HP`,
+          boss.lastAttack.source === 'activity'
+            ? 'Field Strike landed.'
+            : 'Adventure Strike landed.',
+          'damage'
+        );
       }
 
       if (boss.defeated && !previousBoss?.defeated) {
         announceBossDefeat(bossId);
       }
     });
+
+
+    if (
+      next.readyWorkoutDamage > snapshot.readyWorkoutDamage &&
+      next.readyWorkoutDamage > 0
+    ) {
+      actionToast(
+        '⚔️',
+        `${next.readyWorkoutDamage} boss damage ready`,
+        'New workout power is charged. Strike when ready.',
+        'xp'
+      );
+    }
+
+    if (
+      next.readyActivityDamage > snapshot.readyActivityDamage &&
+      next.readyActivityDamage > 0
+    ) {
+      actionToast(
+        '⌚',
+        `Field Strike ready · ${next.readyActivityDamage} damage`,
+        'New Apple Watch activity can hit the boss.',
+        'xp'
+      );
+    }
 
     const newlyCompletedIds =
       [...next.completedWorkoutIds]
@@ -966,7 +1270,15 @@ async function compareNow() {
       const afterLoot = summary(data);
       snapshot = afterLoot;
 
-      lootResult.dropped.forEach(announceLoot);
+      lootResult.dropped.forEach(item => {
+        actionToast(
+          item.icon || '🎁',
+          `${item.rarity || 'Rare'} loot drop`,
+          item.name || 'New relic added to your vault.',
+          'rare'
+        );
+        announceLoot(item);
+      });
     } else {
       snapshot = next;
     }
@@ -978,6 +1290,13 @@ async function compareNow() {
       dayConquered(data) &&
       newlyCompletedIds.length
     ) {
+      actionToast(
+        '🏁',
+        'DAY CONQUERED',
+        'Training and daily systems aligned.',
+        'rare'
+      );
+
       queueModal({
         icon: '🏁',
         kicker: 'DAY CONQUERED',
