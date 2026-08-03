@@ -1,3 +1,4 @@
+import './rpgExpansion.js';
 import './progressOverview.js';
 import './juiceEngine.js';
 import './restCamp.js';
